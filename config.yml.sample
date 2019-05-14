@@ -1,0 +1,21 @@
+# MySQL connection information
+mysql:
+  host: "localhost"
+  port: 3306
+  user: "bingogame"
+  password: "yourpasswordBingo"
+  db: "bingogame"
+  host_blockcache: "localhost"
+  port_blockcache: 3306
+  user_blockcache: "blockchain"
+  password_blockcache: "passToYourChain"
+  db_blockcache: "blockchain"
+# edit this
+discord:
+  token: "BotTokenHere"
+  channelID: 1111111111
+  ownerID: 1111111111
+  TipBotID: 1111111111
+# Edit this if you have a different host:port
+blockcache: "http://127.0.0.1:1111"
+
