@@ -807,7 +807,7 @@ async def board(ctx, *args):
         await ctx.channel.send('This command only available via DM or through <#'+str(channelID)+'>')
         return
     GameStart = Bingo_LastGame()
-    em = discord.Embed(title='BINGO', description=('PLAY BINGO WITH WRKZCOIN #'+str(GameStart[0]))+' TYPE: ***'+str(GameStart[5])+'***', color=0xDEADBF)
+    em = discord.Embed(title=f'Your Bingo Board: {ctx.author.name}', description='Play Bingo at WrkzCoin Discord #'+'{:,.0f}'.format(GameStart[0])+' Type: ***'+str(GameStart[5])+'***', color=0xDEADBF)
     em.set_author(name='BingoBot', icon_url=bot.user.default_avatar_url)
 
     if GameStart is None:
