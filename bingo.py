@@ -64,7 +64,6 @@ EMOJI_LCX = "\U0001F517"
 EMOJI_CX = "\U0001F64F"
 EMOJI_OSC = "\U0001F381"
 EMOJI_BTCM = "\U0001F4A9"
-EMOJI_TLRM = "\U0001F48E"
 EMOJI_MTIP = "\U0001F595"
 EMOJI_XCY = "\U0001F3B2"
 EMOJI_PLE = "\U0001F388"
@@ -75,8 +74,9 @@ EMOJI_ARMS = "\U0001F52B"
 EMOJI_IRD = "\U0001F538"
 
 EMOJI_DOGE = "\U0001F436"
+EMOJI_FORWARD = "\u23E9"
 
-LIST_TIPREACT = [EMOJI_WRKZ, EMOJI_TRTL, EMOJI_DEGO, EMOJI_LCX, EMOJI_CX, EMOJI_OSC, EMOJI_BTCM, EMOJI_TLRM, EMOJI_MTIP, EMOJI_XCY, EMOJI_PLE, EMOJI_ANX, EMOJI_NBX, EMOJI_ARMS, EMOJI_IRD, EMOJI_DOGE]
+LIST_TIPREACT = [EMOJI_WRKZ, EMOJI_TRTL, EMOJI_DEGO, EMOJI_LCX, EMOJI_CX, EMOJI_OSC, EMOJI_BTCM, EMOJI_MTIP, EMOJI_XCY, EMOJI_PLE, EMOJI_ANX, EMOJI_NBX, EMOJI_ARMS, EMOJI_IRD, EMOJI_DOGE, EMOJI_FORWARD]
 EMOJI_ERROR = "\u274C"
 DENY_TIPREACT = EMOJI_ERROR
 
@@ -1466,7 +1466,7 @@ async def bingo(ctx, *args):
                             winMsg = '.tip '+str(GameStart[6])+' '+'<@'+str(ctx.message.author.id)+'> You win. Bingo! Please wait to start new game.'
                             await botChan.send(f'{winMsg}')                        
                             try:
-                                reaction, user = await bot.wait_for('reaction_add', timeout=6.0, check=check)
+                                reaction, user = await bot.wait_for('reaction_add', timeout=10.0, check=check)
                             except asyncio.TimeoutError:
                                 await botChan.send('.tip '+str(GameStart[6])+' '+'<@'+str(ctx.message.author.id)+'> > RETRY')
                             else:
@@ -1474,7 +1474,7 @@ async def bingo(ctx, *args):
                         if rewardNotWin:
                             await botChan.send(f'{rewardNotWin}')
                             try:
-                                reaction, user = await bot.wait_for('reaction_add', timeout=6.0, check=check)
+                                reaction, user = await bot.wait_for('reaction_add', timeout=10.0, check=check)
                             except asyncio.TimeoutError:
                                 await botChan.send('.tip '+str(GameStart[8]) + ' ' + ListMentions+' > RETRY')
                             else:
