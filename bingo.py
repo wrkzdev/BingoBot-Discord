@@ -1466,7 +1466,7 @@ async def bingo(ctx, *args):
                             winMsg = '.tip '+str(GameStart[6])+' '+'<@'+str(ctx.message.author.id)+'> You win. Bingo! Please wait to start new game.'
                             await botChan.send(f'{winMsg}')                        
                             try:
-                                reaction, user = await bot.wait_for('reaction_add', timeout=10.0, check=check)
+                                reaction, user = await bot.wait_for('reaction_add', timeout=15.0, check=check)
                             except asyncio.TimeoutError:
                                 await botChan.send('.tip '+str(GameStart[6])+' '+'<@'+str(ctx.message.author.id)+'> > RETRY')
                             else:
@@ -1474,7 +1474,7 @@ async def bingo(ctx, *args):
                         if rewardNotWin:
                             await botChan.send(f'{rewardNotWin}')
                             try:
-                                reaction, user = await bot.wait_for('reaction_add', timeout=10.0, check=check)
+                                reaction, user = await bot.wait_for('reaction_add', timeout=15.0, check=check)
                             except asyncio.TimeoutError:
                                 await botChan.send('.tip '+str(GameStart[8]) + ' ' + ListMentions+' > RETRY')
                             else:
