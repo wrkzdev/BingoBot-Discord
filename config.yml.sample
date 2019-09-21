@@ -16,6 +16,5 @@ discord:
   channelID: 1111111111
   ownerID: 1111111111
   TipBotID: 1111111111
-# Edit this if you have a different host:port
-blockcache: "http://127.0.0.1:1111"
+
 

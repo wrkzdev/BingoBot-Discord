@@ -1611,15 +1611,34 @@ def boardDump(bingoList, width):
 
 
 def gettopblock():
-    url = config.blockcache + '/block/header/top'
-    resp = requests.get(url)
-    return resp.json()
+    global connBlockchain
+    try:
+        openConnectionBlockchain()
+        with connBlockchain.cursor() as curBlockchain:
+            sql = """ SELECT `height`, `hash` FROM blocks ORDER BY height DESC LIMIT 1 """
+            curBlockchain.execute(sql,)
+            row = curBlockchain.fetchone()
+            return row
+    except Exception as e:
+        print(e)
+    finally:
+        connBlockchain.close()
 
 
 def getblock(blockH):
-    url = config.blockcache + '/block/'+str(blockH)
-    resp = requests.get(url)
-    return resp.json()
+    global connBlockchain
+    try:
+        openConnectionBlockchain()
+        with connBlockchain.cursor() as curBlockchain:
+            sql = """ SELECT `height`, `hash` FROM blocks WHERE `height = %s LMIT 1 """
+            curBlockchain.execute(sql, (blockH))
+            row = curBlockchain.fetchone()
+            return row
+    except Exception as e:
+        print(e)
+    finally:
+        connBlockchain.close()
+
 
 # Sum of all digits 0 to 9 in a string and return numbers:
 #
