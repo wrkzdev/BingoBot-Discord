@@ -1285,7 +1285,7 @@ async def bingo(ctx, *args):
         elif ArgQ[0].upper() == 'MODE' or ArgQ[0].upper() == 'TYPE':
             # OK let's show when it will start or when it was started
             # .bingo start # show when or none
-            if int(ctx.message.author.id) in maintainerOwner:
+            if ctx.message.author.id in maintainerOwner:
                 # OK Owner do it
                 if len(ArgQ) == 1:
                     await ctx.message.author.send('You need to input type of game F: FULL HOUSE, L: LINE, D: DIAGONALS, C: FOUR CORNERS, A: ANY. Example: `MODE A`')
@@ -1328,7 +1328,7 @@ async def bingo(ctx, *args):
         elif ArgQ[0].upper() == 'REWARD' or ArgQ[0].upper() == 'PRICE':
             # OK let's show when it will start or when it was started
             # .bingo start # show when or none
-            if int(ctx.message.author.id) in maintainerOwner:
+            if ctx.message.author.id in maintainerOwner:
                 # OK Owner do it
                 if len(ArgQ) == 1:
                     await ctx.message.author.send('You need to input type the reward of this game. ie. `reward 10000`')
@@ -1361,7 +1361,7 @@ async def bingo(ctx, *args):
         elif ArgQ[0].upper() == 'PLAYREWARD' or ArgQ[0].upper() == 'REWARDPLAY':
             # OK let's show when it will start or when it was started
             # .bingo start # show when or none
-            if int(ctx.message.author.id) in maintainerOwner:
+            if ctx.message.author.id in maintainerOwner:
                 # OK Owner do it
                 if len(ArgQ) == 1:
                     await ctx.message.author.send('You need to input type the reward of this game. ie. `reward 10000`')
@@ -1416,27 +1416,27 @@ async def bingo(ctx, *args):
                     if str(GameStart[5])=='ANY':
                         # ANY GAME:
                         try:
-                            UserBingo1 = CheckUserBingoType(int(ctx.message.author.id), GameStart[0], 'FOUR CORNERS')
+                            UserBingo1 = CheckUserBingoType(ctx.message.author.id, GameStart[0], 'FOUR CORNERS')
                             if str(UserBingo1) == 'FOUR CORNERS':
                                 UserBingo = 'ANY'
-                            UserBingo2 = CheckUserBingoType(int(ctx.message.author.id), GameStart[0], 'LINE')
+                            UserBingo2 = CheckUserBingoType(ctx.message.author.id, GameStart[0], 'LINE')
                             if str(UserBingo2) == 'LINE':
                                 UserBingo = 'ANY'
-                            UserBingo3 = CheckUserBingoType(int(ctx.message.author.id), GameStart[0], 'DIAGONALS')
+                            UserBingo3 = CheckUserBingoType(ctx.message.author.id, GameStart[0], 'DIAGONALS')
                             if str(UserBingo3) == 'DIAGONALS':
                                 UserBingo = 'ANY'
-                            UserBingo4 = CheckUserBingoType(int(ctx.message.author.id), GameStart[0], 'FULL HOUSE')
+                            UserBingo4 = CheckUserBingoType(ctx.message.author.id, GameStart[0], 'FULL HOUSE')
                             if str(UserBingo4) == 'FULL HOUSE':
                                 UserBingo = 'ANY'
                         except:
                             pass
                     else:
                         try:
-                            UserBingo = CheckUserBingoType(int(ctx.message.author.id), GameStart[0], str(GameStart[5]))
+                            UserBingo = CheckUserBingoType(ctx.message.author.id, GameStart[0], str(GameStart[5]))
                         except:
                             pass
                 if UserBingo is None:
-                    KickUser(int(ctx.message.author.id), GameStart[0])
+                    KickUser(ctx.message.author.id, GameStart[0])
                     await ctx.send('Did you check? No BINGO yet!! You\'re out from the game now.')
                     await botChan.send(str(ctx.message.author.name)+' was kicked from .bingo in DM.')						
                     return
@@ -1448,7 +1448,7 @@ async def bingo(ctx, *args):
                             ListActivePlayer = List_bingo_active_players(GameStart[0])
                             if ListActivePlayer:
                                 for (i, item) in enumerate(ListActivePlayer):
-                                    if int(item[0]) != int(ctx.message.author.id):
+                                    if int(item[0]) != ctx.message.author.id:
                                         ListMentions = ListMentions + '<@'+str(item[0])+'>'+' '
                                 rewardNotWin = '.tip '+str(GameStart[8]) + ' ' + ListMentions + 'Thank you for playing.'
                         try:
@@ -1505,7 +1505,7 @@ async def bingo(ctx, *args):
                                 pass
                         return
                     else:
-                        KickUser(int(ctx.message.author.id), GameStart[0])
+                        KickUser(ctx.message.author.id, GameStart[0])
                         await botChan.send('<@'+str(ctx.message.author.id)+'>! Did you check? No BINGO yet!! You\'re out from the game now.')
                         return
         elif ArgQ[0].upper() == 'BALL':  
@@ -1596,7 +1596,7 @@ async def bingo(ctx, *args):
                 return
         elif ArgQ[0].upper() == 'RESTART' or ArgQ[0].upper() == 'RELOAD':
             # Check permission
-            if int(ctx.message.author.id) in maintainerOwner:
+            if ctx.message.author.id in maintainerOwner:
                 await ctx.message.author.send('Bot is rebooting...')
                 await asyncio.sleep(2)
                 sys.exit(0)
