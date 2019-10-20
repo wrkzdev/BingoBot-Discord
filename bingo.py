@@ -42,6 +42,7 @@ import asyncio
 # Date
 from datetime import datetime
 from config import config
+import sys, traceback
 
 remindedStart = 0
 remindedBlock = 0
@@ -230,9 +231,13 @@ def openConnectionBlockchain():
     global connBlockchain
     try:
         if connBlockchain is None:
-            connBlockchain = pymysql.connect(config.mysql.host_blockcache, user=config.mysql.user_blockcache, passwd=config.mysql.password_blockcache, db=config.mysql.db_blockcache, connect_timeout=5)
+            connBlockchain = pymysql.connect(config.mysql.host_blockcache, user=config.mysql.user_blockcache, 
+                                             passwd=config.mysql.password_blockcache, db=config.mysql.db_blockcache, 
+                                             cursorclass=pymysql.cursors.DictCursor, connect_timeout=5)
         elif (not connBlockchain.open):
-            connBlockchain = pymysql.connect(config.mysql.host_blockcache, user=config.mysql.user_blockcache, passwd=config.mysql.password_blockcache, db=config.mysql.db_blockcache, connect_timeout=5)  
+            connBlockchain = pymysql.connect(config.mysql.host_blockcache, user=config.mysql.user_blockcache, 
+                                             passwd=config.mysql.password_blockcache, db=config.mysql.db_blockcache, 
+                                             cursorclass=pymysql.cursors.DictCursor, connect_timeout=5)  
     except:
         print("ERROR: Unexpected error: Could not connect to MySql blockcache instance.")
         sys.exit()
@@ -262,7 +267,7 @@ def CheckUser(userID, userName, GameID):
                 return json.loads(result[1])
             cur.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -289,11 +294,11 @@ def CheckUserBoard(userID, gameID):
                         curBlockchain.execute(sql, (GameStart[1]))
                         rows = curBlockchain.fetchall()
                         for row in rows:
-                            sum_75 = int(sumOfDigits(str(row[1])) % 75) + 1
+                            sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
                             if sum_75 not in ListChain:
                                 ListChain.append(sum_75)
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc(file=sys.stdout)
                 finally:
                     connBlockchain.close()
                 # End connection to blockchain
@@ -308,7 +313,7 @@ def CheckUserBoard(userID, gameID):
                 return UserBingoList
             cur.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -337,11 +342,11 @@ def CheckUserBingoType(userID, gameID, Type):
                         rows = curBlockchain.fetchall()
                         ListChain = []  # For unique list of numbers
                         for row in rows:
-                            sum_75 = int(sumOfDigits(str(row[1])) % 75) + 1
+                            sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
                             if sum_75 not in ListChain:
                                 ListChain.append(sum_75)
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc(file=sys.stdout)
                 finally:
                     connBlockchain.close()
                 # End of select from wrkz_blockchain
@@ -454,7 +459,7 @@ def CheckUserBingoType(userID, gameID, Type):
                         return k
             cur.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
     return None
@@ -477,9 +482,9 @@ def KickUser(userID, GameID):
                         cur.execute(sql, ('YES', str(current_Date), str(userID), str(GameID)))
                         conn.commit()
                 except Exception as e:
-                    print(e) 
+                    traceback.print_exc(file=sys.stdout) 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -494,7 +499,7 @@ def CheckInfoUser(userID, GameID):
             result = cur.fetchone()
             return result
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -509,7 +514,7 @@ def List_bingo_active_players(GameID):
             result = cur.fetchall()
             return result
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -526,7 +531,7 @@ def Bingo_Start():
                 return result
             cur.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
     return None
@@ -543,7 +548,7 @@ def Bingo_LastBlock():
             return result
             cur.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -587,7 +592,7 @@ def Bingo_CreateGame(startedBlock, discord_id, discord_name, gameType: str=None)
                 return result
             cur.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -604,7 +609,7 @@ def Bingo_LastGame():
             return result
             cur.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -620,7 +625,7 @@ def Bingo_LastGameResult():
             return result
             cur.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -643,7 +648,7 @@ def Bingo_LastGameResultList():
                 return listRow
             cur.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -659,15 +664,15 @@ def Bingo_ShowBallNumber(height):
             curBlockchain.execute(sql, (height))
             row = curBlockchain.fetchone()
             if row:
-                sum_75 = int(sumOfDigits(str(row[1])) % 75) + 1
-                card = str('__Height__: '+ str('{:,.0f}'.format(row[0])) + ' Ball number: '+str(sum_75))
+                sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
+                card = str('__Height__: '+ str('{:,.0f}'.format(row['height'])) + ' Ball number: '+str(sum_75))
                 return card
             else:
                 card = str('No ball at that height. __'+str('{:,.0f}'.format(height))+'__')
                 return card
             curBlockchain.close()
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         connBlockchain.close()
     # End of getting from blockchain	
@@ -691,19 +696,19 @@ def Bingo_ShowCards(lastCardNum, gameID):
             listNumberHashes = []
             i = 0
             for row in rows:
-                sum_75 = int(sumOfDigits(str(row[1])) % 75) + 1
+                sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
                 if (sum_75 not in listNumberHashes):
-                    card.append('__Height__: '+ str('{:,.0f}'.format(row[0])) + ' Ball number: '+str(sum_75))
+                    card.append('__Height__: '+ str('{:,.0f}'.format(row['height'])) + ' Ball number: '+str(sum_75))
                     listNumberHashes.append(sum_75)
                 else:
-                    card.append('__Height__: '+ str('{:,.0f}'.format(row[0])) + ' `Ball number: '+str(sum_75)+'`')
+                    card.append('__Height__: '+ str('{:,.0f}'.format(row['height'])) + ' `Ball number: '+str(sum_75)+'`')
                 i += 1
                 if i >= int(lastCardNum):
                     return card
             return card
             curBlockchain.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         connBlockchain.close()
     # End of getting from blockchain	
@@ -739,7 +744,7 @@ def Bingo_StartNow():
                 return result
             cur.close() 
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -759,7 +764,7 @@ def Bingo_Extend(gameID: int, topBlock: int):
             cur.execute(sql, gameID)
             conn.commit()
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -775,7 +780,7 @@ def Bingo_ChangeStatusGame(gameID: int, status: str):
             cur.execute(sql, (status.upper(), int(gameID)))
             conn.commit()
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         conn.close()
 
@@ -792,7 +797,7 @@ async def sayme(ctx):
         try:
             await ctx.send(str(ctx.message.content).replace(".sayme", ""))
         except Exception as e:
-            print(e)
+            traceback.print_exc(file=sys.stdout)
         return
 
 
@@ -814,7 +819,10 @@ async def board(ctx, *args):
         await ctx.send('There is no game opened yet.')
         return
     if GameStart[2].upper() == 'ONGOING':
-        board = CheckUserBoard(str(ctx.message.author.id), GameStart[0])
+        try:
+            board = CheckUserBoard(str(ctx.message.author.id), GameStart[0])
+        except Exception as e:
+            traceback.print_exc(file=sys.stdout)
         if board is None:
             await ctx.send('Game is already on going. Please wait for a new one.')
             return
@@ -852,18 +860,29 @@ async def board(ctx, *args):
         if GameStart[12]:
             em.add_field(name="Remark", value=GameStart[12], inline=False)
         topBlock = gettopblock()
+        print(topBlock)
         em.set_footer(text="Started at height "+str('{:,.0f}'.format(GameStart[1]))+" | Current Height: "+str('{:,.0f}'.format(topBlock['height'])))
         ListActivePlayer = List_bingo_active_players(GameStart[0])
+        print('ListActivePlayer: '+str(ListActivePlayer))
         if len(ListActivePlayer) < 8:
             # print('Less player 8, reply otherwise DM')
-            await ctx.send(embed=em)
+            try:
+                await ctx.send(embed=em)
+            except Exception as e:
+                traceback.print_exc(file=sys.stdout)
             return
         else:
             if int(ctx.message.channel.id) == channelID:
-                await ctx.send('Please check your DM.')
-                await ctx.message.author.send(embed=em)
+                try:
+                    await ctx.send('Please check your DM.')
+                    await ctx.message.author.send(embed=em)
+                except Exception as e:
+                    traceback.print_exc(file=sys.stdout)
             if isinstance(ctx.message.channel, discord.DMChannel):
-                await ctx.message.author.send(embed=em)
+                try:
+                    await ctx.message.author.send(embed=em)
+                except Exception as e:
+                    traceback.print_exc(file=sys.stdout)
         return
     elif GameStart[2].upper() == 'COMPLETED':
         print('Game is completed. Please wait for a new game soon.')
@@ -896,7 +915,7 @@ async def board(ctx, *args):
                                        f'and played reward by: {INCREASE_PLAYREWARD}WRKZ')
                     Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc(file=sys.stdout)
 
         board = CheckUser(str(ctx.message.author.id), ctx.message.author.name, GameStart[0])
         ListActivePlayer = List_bingo_active_players(GameStart[0])
@@ -941,21 +960,21 @@ async def board(ctx, *args):
             try:
                 await ctx.send(embed=em)
             except Exception as e:
-                print(e)
+                traceback.print_exc(file=sys.stdout)
             return
         else:
             if isinstance(ctx.message.channel, discord.DMChannel):
                 try:
                     await ctx.message.author.send(embed=em)
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc(file=sys.stdout)
                 return
             if int(ctx.message.channel.id) == channelID:
                 try:
                     await ctx.send('Please check your DM.')
                     await ctx.message.author.send(embed=em)
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc(file=sys.stdout)
             return
         return
 
@@ -1024,7 +1043,7 @@ async def card(ctx, *args):
                                        f'and played reward by: {INCREASE_PLAYREWARD}WRKZ')
                     Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc(file=sys.stdout)
 
         board = CheckUser(str(ctx.message.author.id), ctx.message.author.name, GameStart[0])
         boardOutput = '`' + boardDump(smallWords(board, 6), 6) + '`'
@@ -1144,7 +1163,7 @@ async def bingo(ctx, *args):
                                                f'and played reward by: {INCREASE_PLAYREWARD}WRKZ')
                             Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
                         except Exception as e:
-                            print(e)
+                            traceback.print_exc(file=sys.stdout)
                 BingoMSG = BingoMSG + 'Game will start at height: `'+str('{:,.0f}'.format(GameStart[1]))+'`. Remaining `' +str(RemainHeight) +'` block(s) more.\n'
                 BingoMSG = BingoMSG + 'Game type: `' + str(GameStart[5])+'` with reward: `'+ str('{:,.2f}'.format(GameStart[6]))+'WRKZ`'+' and play reward: `'+ str('{:,.2f}'.format(GameStart[8]))+'WRKZ`'
                 if ListActivePlayer:
@@ -1201,7 +1220,7 @@ async def bingo(ctx, *args):
                         conn.commit()
                         remindMsg = 'You will __not__ getting an alert from bot when game opened. `.bingo remind` again to enable.'
             except Exception as e:
-                print(e)
+                traceback.print_exc(file=sys.stdout)
             finally:
                 conn.close()
             await ctx.send(f'{remindMsg}')
@@ -1228,35 +1247,40 @@ async def bingo(ctx, *args):
                 # let's alert reminding.
                 remindMsg = ''
                 remindMsg = 'Game created. ID: #'+str(bingoStarted[0])+' at height: '+str(bingoStarted[1])+'. TYPE: '+bingoStarted[8]+'\n'
+
+                # let's create straightaway to game starter
+                board = CheckUser(str(ctx.message.author.id), ctx.message.author.name, bingoStarted[0])
+                boardOutput = '`' + boardDump(smallWords(board, 6), 6) + '`'
+                # let's post his board straightaway
+
+                result = None
                 try:
                     openConnection()
                     with conn.cursor() as cur:
                         sql = """ SELECT `discord_id`, `discord_name` FROM `bingo_reminder` """
                         cur.execute(sql,)
                         result = cur.fetchall()
-                        if result:
-                            for row in result:
-                                # Add mentioned to the list.
-                                remindMsg = remindMsg + '<@'+str(row[0])+'> '
-                            for row in result:
-                                # Add mentioned to the list.
-                                user = bot.get_user(id=int(row[0]))
-                                try:
-                                    await user.send('New Bingo Game created. ID: #'+str('{:,.0f}'.format(bingoStarted[0])))
-                                except Exception as e:
-                                    print(e)
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc(file=sys.stdout)
                 finally:
                     conn.close()
-                # let's create straightaway to game starter
-                board = CheckUser(str(ctx.message.author.id), ctx.message.author.name, bingoStarted[0])
-                boardOutput = '`' + boardDump(smallWords(board, 6), 6) + '`'
-                # let's post his board straightaway
                 try:
+                    if result:
+                        for each in result:
+                            # Add mentioned to the list.
+                            remindMsg = remindMsg + '<@'+str(each[0])+'> '
                     await botChan.send(remindMsg + '\n\n' + str(ctx.message.author.name)+': Your board for game *#'+str(bingoStarted[0])+'\n'+boardOutput+'\n\n'+randMessageCreate)
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc(file=sys.stdout)
+
+                if result:
+                    for each in result:
+                        # Add mentioned to the list.
+                        user = bot.get_user(id=int(each[0]))
+                        try:
+                            await user.send('New Bingo Game created. ID: #'+str('{:,.0f}'.format(bingoStarted[0])))
+                        except Exception as e:
+                            traceback.print_exc(file=sys.stdout)
                 return
         elif ArgQ[0].upper() == 'MODE' or ArgQ[0].upper() == 'TYPE':
             # OK let's show when it will start or when it was started
@@ -1293,7 +1317,7 @@ async def bingo(ctx, *args):
                                 cur.execute(sql, (gameType, GameStart[0]))
                                 conn.commit()
                         except Exception as e:
-                            print(e)
+                            traceback.print_exc(file=sys.stdout)
                         finally:
                             conn.close()
                         await ctx.message.author.send('Game type changed to: `'+gameType+'`')
@@ -1326,7 +1350,7 @@ async def bingo(ctx, *args):
                                 cur.execute(sql, (RewardPrice, GameStart[0]))
                                 conn.commit()
                         except Exception as e:
-                            print(e)
+                            traceback.print_exc(file=sys.stdout)
                         finally:
                             conn.close()
                         await ctx.message.author.send('Game reward changed to: `'+str(RewardPrice)+'`')
@@ -1359,7 +1383,7 @@ async def bingo(ctx, *args):
                                 cur.execute(sql, (RewardPrice, GameStart[0]))
                                 conn.commit()
                         except Exception as e:
-                            print(e)
+                            traceback.print_exc(file=sys.stdout)
                         finally:
                             conn.close()
                         await ctx.message.author.send('Game non-win reward changed to: `'+str(RewardPrice)+'`')
@@ -1436,7 +1460,7 @@ async def bingo(ctx, *args):
                                 cur.execute(sql, ('COMPLETED', str(current_Date), str(ctx.message.author.id), str(ctx.message.author.name), str(topBlock['height']), str(GameStart[0])))
                                 conn.commit()
                         except Exception as e:
-                            print(e)
+                            traceback.print_exc(file=sys.stdout)
                         finally:
                             pass
                         try:
@@ -1455,7 +1479,7 @@ async def bingo(ctx, *args):
                                 cur.execute(sql,)
                                 conn.commit()
                         except Exception as e:
-                            print(e)
+                            traceback.print_exc(file=sys.stdout)
                         finally:
                             conn.close()
                         winMsg = 'You win. Bingo! Please wait to start new game.\nWinner is: <@'+str(ctx.message.author.id)+'>'
@@ -1620,7 +1644,7 @@ def gettopblock():
             row = curBlockchain.fetchone()
             return row
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         connBlockchain.close()
 
@@ -1635,7 +1659,7 @@ def getblock(blockH):
             row = curBlockchain.fetchone()
             return row
     except Exception as e:
-        print(e)
+        traceback.print_exc(file=sys.stdout)
     finally:
         connBlockchain.close()
 
@@ -1694,7 +1718,7 @@ async def show_msgCard():
                         if int(row[0]) not in playerIDs:
                             SomeTips.append('Do you want to play bingo? <@'+str(row[0])+'>. It is not late yet.  `.bingo remind` If you want me to stop this ping.')
         except Exception as e:
-            print(e)
+            traceback.print_exc(file=sys.stdout)
         finally:
             conn.close()
     elif GameStart[2].upper() == 'COMPLETED':
@@ -1740,7 +1764,7 @@ async def show_msgCard():
                         try:
                             await botChan.send(f'{cardMsg}')
                         except Exception as e:
-                            print(e)
+                            traceback.print_exc(file=sys.stdout)
 
 
 async def show_checkOpenedGame():
@@ -1775,7 +1799,7 @@ async def show_checkOpenedGame():
                                            f'and played reward by: {INCREASE_PLAYREWARD}WRKZ')
                         Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
                     except Exception as e:
-                        print(e)
+                        traceback.print_exc(file=sys.stdout)
             else:
                 # if can remind
                 RemainHeight = int(GameStart[1]) - int(topBlock['height'])
@@ -1787,7 +1811,7 @@ async def show_checkOpenedGame():
                 else:
                     remindedStart = 0
         elif GameStart[2].upper() == 'ONGOING':
-            print('Game is ongoing.')
+            # print('Game is ongoing.')
             # If player just only one. Let him win
             if len(ListActivePlayer) == 1:
                 for (i, item) in enumerate(ListActivePlayer):
@@ -1803,7 +1827,7 @@ async def show_checkOpenedGame():
                         cur.execute(sql, ('COMPLETED', str(current_Date), str(winner_id), str(winner_name), str(topBlock['height']), str(GameStart[0])))
                         conn.commit()
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc(file=sys.stdout)
                 finally:
                     pass
                 try:
@@ -1822,7 +1846,7 @@ async def show_checkOpenedGame():
                         cur.execute(sql,)
                         conn.commit()
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc(file=sys.stdout)
                 finally:
                     conn.close()
                 winMsg = '<@'+str(winner_id)+'> wins the game alone.'
@@ -1857,7 +1881,7 @@ async def checkOpenedGame():
             await show_checkOpenedGame()
             await asyncio.sleep(10)  # sleep 10 seconds
         except Exception as e:
-            print(e)
+            traceback.print_exc(file=sys.stdout)
 
 
 async def show_randomMsg():
