@@ -1397,7 +1397,6 @@ async def bingo(ctx, *args):
                 await ctx.send('There is no game started yet. Please ask to start.')
                 return
             else:
-                print('There is a GameStart')
                 if GameStart[2] == 'OPENED':
                     await ctx.send('Game is still opened for new players.')
                     return
@@ -1603,7 +1602,68 @@ async def bingo(ctx, *args):
             else:
                 await ctx.message.author.send('Access denied...')
                 return
+        elif ArgQ[0].upper() == 'END' and (ctx.message.author.id in maintainerOwner):
+            # let's end the game and let BingoBot win
+            if GameStart is None:
+                await ctx.send('There is no game started yet. Please ask to start.')
+                return
+            else:
+                if GameStart[2] == 'ONGOING':
+                    # OK game is ONGOING, let's END
+                    ListMentions = ''
+                    # Tip player (not winner)
+                    if int(GameStart[8]) > 1:
+                        ListActivePlayer = List_bingo_active_players(GameStart[0])
+                        if ListActivePlayer:
+                            for (i, item) in enumerate(ListActivePlayer):
+                                if int(item[0]) != bot.user.id:
+                                    ListMentions = ListMentions + '<@'+str(item[0])+'>'+' '
+                            rewardNotWin = '.tip '+str(GameStart[8]) + ' ' + ListMentions + 'Thank you for playing.'
+                    try:
+                        current_Date = datetime.now()
+                        topBlock = gettopblock()
+                        openConnection()
+                        with conn.cursor() as cur:
+                            sql = "UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, `claim_Atheight`=%s WHERE `id`=%s"
+                            cur.execute(sql, ('COMPLETED', str(current_Date), str(bot.user.id), str(bot.user.name), str(topBlock['height']), str(GameStart[0])))
+                            conn.commit()
+                    except Exception as e:
+                        traceback.print_exc(file=sys.stdout)
+                    try:
+                        openConnection()
+                        with conn.cursor() as cur:
+                            sql = """ INSERT INTO bingo_active_players_archive SELECT * FROM bingo_active_players; """
+                            cur.execute(sql,)
+                            conn.commit()
+                            sql = """ INSERT INTO bingo_active_blocks_archive SELECT * FROM bingo_active_blocks; """
+                            cur.execute(sql,)
+                            conn.commit()
+                            sql = """ TRUNCATE TABLE bingo_active_players; """
+                            cur.execute(sql,)
+                            conn.commit()
+                            sql = """ TRUNCATE TABLE bingo_active_blocks; """
+                            cur.execute(sql,)
+                            conn.commit()
+                    except Exception as e:
+                        traceback.print_exc(file=sys.stdout)
+                    finally:
+                        conn.close()
+                    winMsg = 'End. Winner is: <@'+str(bot.user.id)+'>'
+                    await botChan.send(f'{winMsg}')
 
+                    if rewardNotWin:
+                        await botChan.send(f'{rewardNotWin}')
+                        try:
+                            reaction, user = await bot.wait_for('reaction_add', timeout=15.0, check=check)
+                        except asyncio.TimeoutError:
+                            await botChan.send('.tip '+str(GameStart[8]) + ' ' + ListMentions+' > RETRY')
+                    return
+                elif GameStart[2] == 'COMPLETED':
+                    await ctx.send('Game was completed. Please start a new one.')
+                    return
+                elif GameStart[2] == 'OPENED':
+                    await ctx.send('Game is still open. Please register using `.board`')
+                    return
 
 # Breaks each entry in the input list into chunks. Returns a list 
 # of list chunks
