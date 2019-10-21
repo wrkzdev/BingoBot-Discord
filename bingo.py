@@ -118,7 +118,7 @@ async def on_shard_ready(shard_id):
 async def on_message(message):
     # do some extra stuff here
     if not isinstance(message.channel, discord.DMChannel):
-        if int(message.channel.id) not in BOT_LISTEN_ONLYCHAN:
+        if message.channel.id not in BOT_LISTEN_ONLYCHAN:
             return
         else:
             pass
@@ -140,7 +140,7 @@ async def on_reaction_add(reaction, user):
     emoji = reaction.emoji
     if user != reaction.message.channel.guild.me:
         if int(user.id) == TIPBOTID and (bot.user in reaction.message.mentions):
-            if int(reaction.message.channel.id) == channelID and (reaction.emoji in LIST_TIPREACT):
+            if reaction.message.channel.id == channelID and (reaction.emoji in LIST_TIPREACT):
                 # OK in bingo channel
                 TipThanksMsg = [] # created message array
                 TipThanksMsg.append('Thank you a lot %s!')
@@ -152,7 +152,7 @@ async def on_reaction_add(reaction, user):
                 randMessageTip = str(random.choice(TipThanksMsg)).replace('%s', userMention)
                 await botChan.send(f'{randMessageTip}')
                 return
-            if int(reaction.message.channel.id) == channelID and reaction.emoji == EMOJI_ERROR:
+            if reaction.message.channel.id == channelID and reaction.emoji == EMOJI_ERROR:
                 TipThanksMsg = [] # created message array
                 TipThanksMsg.append('No problem %s!')
                 TipThanksMsg.append('%s :) merci quand même')
@@ -279,7 +279,7 @@ def CheckUserBoard(userID, gameID):
         with conn.cursor() as cur:
             sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
                       FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s AND `kicked`='NO' LIMIT 1 """
-            cur.execute(sql, (userID, gameID))
+            cur.execute(sql, (str(userID), gameID))
             result = cur.fetchone()
             if result is None:
                 return None
@@ -307,7 +307,6 @@ def CheckUserBoard(userID, gameID):
                 for row in ListChain:
                     for n, i in enumerate(UserBingoList):
                         if str(i) == str(row):
-                            # print('Hash matches: '+ str(row)+'== Total k:'+str(k))
                             k += 1
                             UserBingoList[n] = '*'+str(row)+'*'
                 return UserBingoList
@@ -441,7 +440,6 @@ def CheckUserBingoType(userID, gameID, Type):
                             if str(i) == str(row):
                                 k += 1
                     if k == 8:
-                        # print(k)
                         return Type
                     else:
                         return k
@@ -471,7 +469,7 @@ def KickUser(userID, GameID):
         with conn.cursor() as cur:
             sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
                       FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s LIMIT 1 """
-            cur.execute(sql, (userID, GameID))
+            cur.execute(sql, (str(userID), GameID))
             result = cur.fetchone()
             if result:
                 try:
@@ -644,7 +642,6 @@ def Bingo_LastGameResultList():
                 listRow = []
                 for row in result:
                     listRow.append([row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]])
-                #print(listRow)
                 return listRow
             cur.close() 
     except Exception as e:
@@ -724,7 +721,6 @@ def Bingo_StartNow():
             result = cur.fetchone()
             if result is None:
                 # Let's insert starting block info
-                # print('OK to insert SQL for game start')
                 current_Date = datetime.now()
                 topBlock = gettopblock()
                 first2 = int(topBlock['hash'][:2], 16)
@@ -792,7 +788,6 @@ channelID = config.discord.channelID
 @bot.command(pass_context=True, name='sayme')
 async def sayme(ctx):
     global maintainerOwner
-    print('OK what to sayme?')
     if ctx.message.author.id in maintainerOwner:
         try:
             await ctx.send(str(ctx.message.content).replace(".sayme", ""))
@@ -820,7 +815,7 @@ async def board(ctx, *args):
         return
     if GameStart[2].upper() == 'ONGOING':
         try:
-            board = CheckUserBoard(str(ctx.message.author.id), GameStart[0])
+            board = CheckUserBoard(ctx.message.author.id, GameStart[0])
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
         if board is None:
@@ -853,26 +848,24 @@ async def board(ctx, *args):
             if n >= 0 and (n+1) % 5 != 0:
                 LineEm = LineEm + ThisNum + '     '
             elif n > 0 and (n+1) % 5 == 0:
-                # print(LineEm)
                 LineEm = LineEm + ThisNum + '     '
                 em.add_field(name="-", value=LineEm, inline=False)
                 LineEm = ''
         if GameStart[12]:
             em.add_field(name="Remark", value=GameStart[12], inline=False)
         topBlock = gettopblock()
-        print(topBlock)
+
         em.set_footer(text="Started at height "+str('{:,.0f}'.format(GameStart[1]))+" | Current Height: "+str('{:,.0f}'.format(topBlock['height'])))
         ListActivePlayer = List_bingo_active_players(GameStart[0])
-        print('ListActivePlayer: '+str(ListActivePlayer))
+
         if len(ListActivePlayer) < 8:
-            # print('Less player 8, reply otherwise DM')
             try:
                 await ctx.send(embed=em)
             except Exception as e:
                 traceback.print_exc(file=sys.stdout)
             return
         else:
-            if int(ctx.message.channel.id) == channelID:
+            if ctx.message.channel.id == channelID:
                 try:
                     await ctx.send('Please check your DM.')
                     await ctx.message.author.send(embed=em)
@@ -885,7 +878,6 @@ async def board(ctx, *args):
                     traceback.print_exc(file=sys.stdout)
         return
     elif GameStart[2].upper() == 'COMPLETED':
-        print('Game is completed. Please wait for a new game soon.')
         await ctx.send('Game is already completed.')
         return
     elif GameStart[2].upper() == 'OPENED':
@@ -919,7 +911,7 @@ async def board(ctx, *args):
 
         board = CheckUser(str(ctx.message.author.id), ctx.message.author.name, GameStart[0])
         ListActivePlayer = List_bingo_active_players(GameStart[0])
-        board = CheckUserBoard(str(ctx.message.author.id), GameStart[0])
+        board = CheckUserBoard(ctx.message.author.id, GameStart[0])
         em.add_field(name="-", value=":regional_indicator_w::regional_indicator_r::regional_indicator_k::regional_indicator_z:       "
             ":regional_indicator_b::regional_indicator_i::regional_indicator_n::regional_indicator_g::regional_indicator_o:", inline=False)
         LineEm = ''
@@ -946,7 +938,6 @@ async def board(ctx, *args):
             if n >= 0 and (n+1) % 5 != 0:
                 LineEm = LineEm + ThisNum + '     '
             elif n > 0 and (n+1) % 5 == 0:
-                # print(LineEm)
                 LineEm = LineEm + ThisNum + '     '
                 em.add_field(name="-", value=LineEm, inline=False)
                 LineEm = ''
@@ -969,7 +960,7 @@ async def board(ctx, *args):
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
                 return
-            if int(ctx.message.channel.id) == channelID:
+            if ctx.message.channel.id == channelID:
                 try:
                     await ctx.send('Please check your DM.')
                     await ctx.message.author.send(embed=em)
@@ -995,7 +986,7 @@ async def card(ctx, *args):
         await ctx.send('There is no game opened yet.')
         return
     if GameStart[2].upper() == 'ONGOING':
-        board = CheckUserBoard(str(ctx.message.author.id), GameStart[0])
+        board = CheckUserBoard(ctx.message.author.id, GameStart[0])
         if board is None:
             await ctx.send('Game is already on going. Please wait for a new one.')
             return
@@ -1006,10 +997,9 @@ async def card(ctx, *args):
 
             ListActivePlayer = List_bingo_active_players(GameStart[0])
             if len(ListActivePlayer) < 8:
-                print('Less player 8, reply otherwise DM')
                 await ctx.send(str(ctx.message.author.name)+': Your created board for game *#'+str(GameStart[0])+'* TYPE: ***'+str(GameStart[5])+'***\n'+boardOutput)
             else:
-                if int(ctx.message.channel.id) == channelID:
+                if ctx.message.channel.id == channelID:
                     await ctx.send('Please check your DM.')
                 await ctx.message.author.send('Your created board for game *#'+str(GameStart[0])+'* TYPE: ***'+str(GameStart[5])+'***\n'+boardOutput)
             return
@@ -1053,7 +1043,7 @@ async def card(ctx, *args):
         if len(ListActivePlayer) < 8:
             await ctx.send(str(ctx.message.author.name)+': Your board for game #'+str(GameStart[0])+' TYPE: ***'+str(GameStart[5])+'***\n'+boardOutput)
         else:
-            if int(ctx.message.channel.id) == channelID:
+            if ctx.message.channel.id == channelID:
                 await ctx.send('Please check your DM.')
             await ctx.message.author.send('Your board for game #'+str(GameStart[0])+' TYPE: ***'+str(GameStart[5])+'***\n'+boardOutput)
         return
@@ -1406,7 +1396,7 @@ async def bingo(ctx, *args):
                     return
                 # Check user card with blocks hash
                 elif GameStart[2] == 'ONGOING':
-                    board = CheckUserBoard(str(ctx.message.author.id), GameStart[0])
+                    board = CheckUserBoard(ctx.message.author.id, GameStart[0])
                     # If no board, reply user.
                     if board is None:
                         await ctx.send('You are late. Game is already ongoing. Please wait for a new one.')
@@ -1484,7 +1474,7 @@ async def bingo(ctx, *args):
                         winMsg = 'You win. Bingo! Please wait to start new game.\nWinner is: <@'+str(ctx.message.author.id)+'>'
                         await botChan.send(f'{winMsg}')
                         def check(reaction, user):
-                            return (int(reaction.message.channel.id) == channelID) and (user.id == TIPBOTID) and (str(reaction.emoji) in LIST_TIPREACT) and (reaction.message.author == bot.user)
+                            return (reaction.message.channel.id == channelID) and (user.id == TIPBOTID) and (str(reaction.emoji) in LIST_TIPREACT) and (reaction.message.author == bot.user)
                         if int(GameStart[6]) > 1:
                             winMsg = '.tip '+str(GameStart[6])+' '+'<@'+str(ctx.message.author.id)+'> You win. Bingo! Please wait to start new game.'
                             await botChan.send(f'{winMsg}')                        
@@ -1586,7 +1576,6 @@ async def bingo(ctx, *args):
                     # Show:
                     whenWin = datetime.strptime(msg[3].split(".")[0], '%Y-%m-%d %H:%M:%S')
                     ago = timeago.format(whenWin, datetime.now())
-                    #print(ago)
                     LastGameMsg = LastGameMsg + '**Last game #'+str(msg[0])+'**\n'
                     LastGameMsg = LastGameMsg + '__Started block__: '+str(msg[1])+', Claimed to win block: '+str(msg[6])+'\n'
                     LastGameMsg = LastGameMsg + '__Winner was__: `'+msg[5]+'`\n'
@@ -1648,7 +1637,7 @@ async def bingo(ctx, *args):
                         traceback.print_exc(file=sys.stdout)
                     finally:
                         conn.close()
-                    winMsg = 'End. Winner is: <@'+str(bot.user.id)+'>'
+                    winMsg = '**Game Over**. Winner is: <@'+str(bot.user.id)+'>'
                     await botChan.send(f'{winMsg}')
 
                     if rewardNotWin:
@@ -1664,6 +1653,7 @@ async def bingo(ctx, *args):
                 elif GameStart[2] == 'OPENED':
                     await ctx.send('Game is still open. Please register using `.board`')
                     return
+
 
 # Breaks each entry in the input list into chunks. Returns a list 
 # of list chunks
@@ -1833,7 +1823,7 @@ async def show_checkOpenedGame():
     GameStart = Bingo_LastGame()
     # Insert only if game is start
     if GameStart is None:
-        print('Game is off')
+        pass
     else:
         ListActivePlayer = List_bingo_active_players(GameStart[0])
         topBlock = gettopblock()
@@ -1871,7 +1861,6 @@ async def show_checkOpenedGame():
                 else:
                     remindedStart = 0
         elif GameStart[2].upper() == 'ONGOING':
-            # print('Game is ongoing.')
             # If player just only one. Let him win
             if len(ListActivePlayer) == 1:
                 for (i, item) in enumerate(ListActivePlayer):
@@ -1934,7 +1923,6 @@ async def on_command_error(error, _: commands.Context):
 
 async def checkOpenedGame():
     await bot.wait_until_ready()
-    print("sleep 5 seconds..")
     while True:
         try:
             await asyncio.sleep(5)  # 5 second before doing anything. Especially sending message to server
