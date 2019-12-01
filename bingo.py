@@ -1236,7 +1236,7 @@ async def bingo(ctx, *args):
                 randMessageCreate = str(random.choice(createdMsg)).replace('%s', userMention)
                 # let's alert reminding.
                 remindMsg = ''
-                remindMsg = 'Game created. ID: #'+str(bingoStarted[0])+' at height: '+str(bingoStarted[1])+'. TYPE: '+bingoStarted[8]+'\n'
+                remindMsg = 'Game created. ID: #'+'{:,.0f}'.format(bingoStarted[0])+' at height: '+'{:,.0f}'.format(bingoStarted[1])+'. TYPE: '+bingoStarted[8]+'\n'
 
                 # let's create straightaway to game starter
                 board = CheckUser(str(ctx.message.author.id), ctx.message.author.name, bingoStarted[0])
@@ -1259,7 +1259,7 @@ async def bingo(ctx, *args):
                         for each in result:
                             # Add mentioned to the list.
                             remindMsg = remindMsg + '<@'+str(each[0])+'> '
-                    await botChan.send(remindMsg + '\n\n' + str(ctx.message.author.name)+': Your board for game *#'+str(bingoStarted[0])+'\n'+boardOutput+'\n\n'+randMessageCreate)
+                    await botChan.send(remindMsg + '\n\n' + str(ctx.message.author.name)+': Your board for game **#'+'{:,.0f}'.format(bingoStarted[0])+'**\n'+boardOutput+'\n\n'+randMessageCreate)
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
 
@@ -1268,7 +1268,7 @@ async def bingo(ctx, *args):
                         # Add mentioned to the list.
                         user = bot.get_user(id=int(each[0]))
                         try:
-                            await user.send('New Bingo Game created. ID: #'+str('{:,.0f}'.format(bingoStarted[0])))
+                            await user.send('New Bingo Game created. ID: #'+'{:,.0f}'.format(bingoStarted[0]))
                         except Exception as e:
                             traceback.print_exc(file=sys.stdout)
                 return
@@ -1557,8 +1557,8 @@ async def bingo(ctx, *args):
                 ago = timeago.format(whenWin, datetime.now())
 
                 LastGameMsg = ''
-                LastGameMsg = '**Last game #'+str(LastGameRes[0])+'**\n'
-                LastGameMsg = LastGameMsg + '__Started block__: '+str(LastGameRes[1])+', Claimed to win block: '+str(LastGameRes[6])+'\n'
+                LastGameMsg = '**Last game #'+'{:,.0f}'.format(LastGameRes[0])+'**\n'
+                LastGameMsg = LastGameMsg + '__Started block__: '+'{:,.0f}'.format(LastGameRes[1])+', Claimed to win block: '+'{:,.0f}'.format(LastGameRes[6])+'\n'
                 LastGameMsg = LastGameMsg + '__Winner was__: <@'+LastGameRes[4]+'>\n'
                 LastGameMsg = LastGameMsg + '__When__: '+str(ago) + '. Game type:`'+str(LastGameRes[7])+'`'
                 await ctx.send(str(LastGameMsg))
@@ -1576,8 +1576,8 @@ async def bingo(ctx, *args):
                     # Show:
                     whenWin = datetime.strptime(msg[3].split(".")[0], '%Y-%m-%d %H:%M:%S')
                     ago = timeago.format(whenWin, datetime.now())
-                    LastGameMsg = LastGameMsg + '**Last game #'+str(msg[0])+'**\n'
-                    LastGameMsg = LastGameMsg + '__Started block__: '+str(msg[1])+', Claimed to win block: '+str(msg[6])+'\n'
+                    LastGameMsg = LastGameMsg + '**Last game #'+'{:,.0f}'.format(msg[0])+'**\n'
+                    LastGameMsg = LastGameMsg + '__Started block__: '+'{:,.0f}'.format(msg[1])+', Claimed to win block: '+'{:,.0f}'.format(msg[6])+'\n'
                     LastGameMsg = LastGameMsg + '__Winner was__: `'+msg[5]+'`\n'
                     LastGameMsg = LastGameMsg + '__When__: '+str(ago) + '. Game type:`'+str(msg[7]) + '`\n\n'
                 await ctx.send(str(LastGameMsg))
