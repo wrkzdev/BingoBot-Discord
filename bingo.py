@@ -57,6 +57,8 @@ EMOJI_MONEYFACE = "\U0001F911"
 EMOJI_ERROR = "\u274C"
 # Blocks where Bot will start + topblock
 BINGO_STARTAT = 40
+# Bingo to start ping user after 180 blocks.
+BINGO_ALERT_BLOCKS = 120
 
 EMOJI_WRKZ = "\U0001F477"
 EMOJI_TRTL = "\U0001F422"
@@ -1089,8 +1091,9 @@ async def ball(ctx, *args):
 
 @bot.command(pass_context=True, name='bingo', aliases=['bing'], help=bot_help_bingo)
 async def bingo(ctx, *args):
-    global maintainerOwner, channelID
+    global maintainerOwner, channelID, BINGO_ALERT_BLOCKS
     botChan = bot.get_channel(int(channelID))
+    topBlock = gettopblock()
     # If private DM, OK pass
     if isinstance(ctx.channel, discord.DMChannel) or ctx.channel.id == channelID:
         pass
@@ -1107,9 +1110,11 @@ async def bingo(ctx, *args):
             # Tell game is not start
             BingoMSG = 'There is no game started yet. Please ask to start.'
         else:
+            PassedBlocks = int(topBlock['height']) - int(GameStart[1])
             # If there is any game.
             ListActivePlayer = List_bingo_active_players(GameStart[0])
             names = ''
+            mentions = ''
             names_kick = ''
             if GameStart[2] == 'ONGOING':
                 BingoMSG = BingoMSG + 'Game was started at height: `'+str('{:,.0f}'.format(GameStart[1])) +'`\n'
@@ -1119,17 +1124,20 @@ async def bingo(ctx, *args):
                     kickedPlayer = 0
                     totalPlayer = 0
                     for (i, item) in enumerate(ListActivePlayer):
-                        names = names + ' ' + item[1]
+                        names += ' ' + item[1]
+                        if item[5].upper() != 'YES':
+                            mentions += ' ' + '<@' + str(item[0]) + '>'
                         if(item[5]=='YES'):
                             kickedPlayer += 1
                             names_kick = names_kick + ' ' + item[1]
                         totalPlayer += 1
-                    BingoMSG = BingoMSG + '\n' + 'Current players: `'+str(totalPlayer)+'`. Kicked: `'+ str(kickedPlayer)+'`'
+                    BingoMSG += '\n' + 'Current players: `'+str(totalPlayer)+'`. Kicked: `'+ str(kickedPlayer)+'`'
+                if PassedBlocks > BINGO_ALERT_BLOCKS:
+                    BingoMSG += '\nHello ' + mentions + ' Please check your bingo.'
             elif GameStart[2].upper() == 'COMPLETED':
                 BingoMSG = BingoMSG +  'Game was completed.\n'
                 BingoMSG = BingoMSG +  'Please start a new one. Ttype `.bingo lastgame` for result.\n'
             elif GameStart[2].upper() == 'OPENED':
-                topBlock = gettopblock()
                 RemainHeight = int(GameStart[1]) - int(topBlock['height'])
                 # to avoid some bug game hasn't started
                 if int(RemainHeight) <= 0:
@@ -1166,10 +1174,11 @@ async def bingo(ctx, *args):
                             names_kick = names_kick + ' ' + item[1]
                         totalPlayer += 1
                     BingoMSG = BingoMSG + '\n' + 'Current registered players: `' + str(totalPlayer)+'`'
-            if len(names) > 0:
-                BingoMSG = BingoMSG + '\n' + 'Registered: ' + names
-            if len(names_kick) > 0:
-                BingoMSG = BingoMSG + '\n' + 'Kicked: ' + names_kick
+            if PassedBlocks <= BINGO_ALERT_BLOCKS:
+                if len(names) > 0:
+                    BingoMSG += '\n' + 'Registered: ' + names
+                if len(names_kick) > 0:
+                    BingoMSG += '\n' + 'Kicked: ' + names_kick
         await ctx.send(f'{BingoMSG}')
         return
     elif len(ArgQ) == 1 or len(ArgQ) == 2:
