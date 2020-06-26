@@ -224,6 +224,7 @@ def openConnection():
         elif not conn.open:
             conn = pymysql.connect(config.mysql.host, user=config.mysql.user, passwd=config.mysql.password,
                                    db=config.mysql.db, connect_timeout=5)
+        conn.ping(reconnect=True)  # reconnecting mysql
     except:
         print("ERROR: Unexpected error: Could not connect to MySql bingogame instance.")
         sys.exit()
@@ -239,7 +240,8 @@ def openConnectionBlockchain():
         elif (not connBlockchain.open):
             connBlockchain = pymysql.connect(config.mysql.host_blockcache, user=config.mysql.user_blockcache, 
                                              passwd=config.mysql.password_blockcache, db=config.mysql.db_blockcache, 
-                                             cursorclass=pymysql.cursors.DictCursor, connect_timeout=5)  
+                                             cursorclass=pymysql.cursors.DictCursor, connect_timeout=5)
+        connBlockchain.ping(reconnect=True)  # reconnecting mysql
     except:
         print("ERROR: Unexpected error: Could not connect to MySql blockcache instance.")
         sys.exit()
@@ -1266,8 +1268,10 @@ async def bingo(ctx, *args):
                 try:
                     if result:
                         for each in result:
-                            # Add mentioned to the list.
-                            remindMsg = remindMsg + '<@'+str(each[0])+'> '
+                            member = bot.get_user(id=int(each[0]))
+                            if member in ctx.guild.members and member.bot == False:
+                                # Add mentioned to the list.
+                                remindMsg = remindMsg + '<@'+str(each[0])+'> '
                     await botChan.send(remindMsg + '\n\n' + str(ctx.message.author.name)+': Your board for game **#'+'{:,.0f}'.format(bingoStarted[0])+'**\n'+boardOutput+'\n\n'+randMessageCreate)
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
