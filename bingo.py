@@ -76,6 +76,8 @@ EMOJI_NBX = "\U0001F5A4"
 EMOJI_ARMS = "\U0001F52B"
 EMOJI_IRD = "\U0001F538"
 
+EMPTY_DISPLAY = '⬛' # ⬛ :black_large_square:
+
 EMOJI_DOGE = "\U0001F436"
 EMOJI_FORWARD = "\u23E9"
 
@@ -811,7 +813,7 @@ async def board(ctx, *args):
         await ctx.channel.send('This command only available via DM or through <#'+str(channelID)+'>')
         return
     GameStart = Bingo_LastGame()
-    em = discord.Embed(title=f'Your Bingo Board: {ctx.author.name}', description='Play Bingo at WrkzCoin Discord #'+'{:,.0f}'.format(GameStart[0])+' Type: ***'+str(GameStart[5])+'***', color=0xDEADBF)
+    em = discord.Embed(title=f'Your Bingo Board: {ctx.author.name}', description='Play Bingo at WrkzCoin Discord #'+'{:,.0f}'.format(GameStart[0])+' Type: ***'+str(GameStart[5])+'***', timestamp=datetime.utcnow(), color=0xDEADBF)
     em.set_author(name='BingoBot', icon_url=bot.user.default_avatar_url)
 
     if GameStart is None:
@@ -826,16 +828,17 @@ async def board(ctx, *args):
             await ctx.send('Game is already on going. Please wait for a new one.')
             return
         # Let's embed
-        em.add_field(name="-", value=":regional_indicator_w::regional_indicator_r::regional_indicator_k::regional_indicator_z:       "
-            ":regional_indicator_b::regional_indicator_i::regional_indicator_n::regional_indicator_g::regional_indicator_o:", inline=False)
+        em.add_field(name="-", value=f"{15*EMPTY_DISPLAY}\n"+ f"{2*EMPTY_DISPLAY}:regional_indicator_w::regional_indicator_r::regional_indicator_k::regional_indicator_z:{2*EMPTY_DISPLAY}"
+            f":regional_indicator_b::regional_indicator_i::regional_indicator_n::regional_indicator_g::regional_indicator_o:{2*EMPTY_DISPLAY}\n" + f"{15*EMPTY_DISPLAY}\n", inline=False)
         LineEm = ''
+        LineEm_str = ''
         for (n, i) in enumerate(board):
             # enumerate
             ThisNum = ''
             if str(i).startswith('*'):
-                ThisNum = ':white_check_mark::white_check_mark:'
+                ThisNum = ':white_check_mark::white_check_mark:' + EMPTY_DISPLAY
             elif str(i).startswith('FREE'):
-                ThisNum = ':free::free:'
+                ThisNum = ':free::free:' + EMPTY_DISPLAY
             else:
                 # It is number
                 ThisNum = '{:02d}'.format(int(i))
@@ -849,12 +852,16 @@ async def board(ctx, *args):
                 ThisNum = ThisNum.replace('7',':seven:')
                 ThisNum = ThisNum.replace('8',':eight:')
                 ThisNum = ThisNum.replace('9',':nine:')
+                ThisNum += EMPTY_DISPLAY
             if n >= 0 and (n+1) % 5 != 0:
-                LineEm = LineEm + ThisNum + '     '
+                LineEm += ThisNum
             elif n > 0 and (n+1) % 5 == 0:
-                LineEm = LineEm + ThisNum + '     '
-                em.add_field(name="-", value=LineEm, inline=False)
+                LineEm += ThisNum
+                LineEm_str += LineEm + "\n"
+                LineEm_str += 15*EMPTY_DISPLAY + "\n"
                 LineEm = ''
+        em.add_field(name=f"-", value=LineEm_str, inline=False)
+        em.add_field(name="OTHER LINKS", value="{} / {} / {}".format("[Use TipBot?](http://invite.discord.bot.tips)", "[Support Server](https://discord.com/invite/GpHzURM)", "[TipBot Github](https://github.com/wrkzcoin/TipBot)"), inline=False)
         if GameStart[12]:
             em.add_field(name="Remark", value=GameStart[12], inline=False)
         topBlock = gettopblock()
@@ -862,7 +869,7 @@ async def board(ctx, *args):
         em.set_footer(text="Started at height "+str('{:,.0f}'.format(GameStart[1]))+" | Current Height: "+str('{:,.0f}'.format(topBlock['height'])))
         ListActivePlayer = List_bingo_active_players(GameStart[0])
 
-        if len(ListActivePlayer) < 8:
+        if len(ListActivePlayer) < 20:
             try:
                 await ctx.send(embed=em)
             except Exception as e:
@@ -916,16 +923,17 @@ async def board(ctx, *args):
         board = CheckUser(str(ctx.message.author.id), ctx.message.author.name, GameStart[0])
         ListActivePlayer = List_bingo_active_players(GameStart[0])
         board = CheckUserBoard(ctx.message.author.id, GameStart[0])
-        em.add_field(name="-", value=":regional_indicator_w::regional_indicator_r::regional_indicator_k::regional_indicator_z:       "
-            ":regional_indicator_b::regional_indicator_i::regional_indicator_n::regional_indicator_g::regional_indicator_o:", inline=False)
+        em.add_field(name="-", value=f"{15*EMPTY_DISPLAY}\n"+ f"{2*EMPTY_DISPLAY}:regional_indicator_w::regional_indicator_r::regional_indicator_k::regional_indicator_z:{2*EMPTY_DISPLAY}"
+            f":regional_indicator_b::regional_indicator_i::regional_indicator_n::regional_indicator_g::regional_indicator_o:{2*EMPTY_DISPLAY}\n" + f"{15*EMPTY_DISPLAY}\n", inline=False)
         LineEm = ''
+        LineEm_str = ''
         for (n, i) in enumerate(board):
             # enumerate
             ThisNum = None
             if str(i).startswith('*'):
                 ThisNum = ':white_check_mark::white_check_mark:'
             elif str(i).startswith('FREE'):
-                ThisNum = ':free::free:'
+                ThisNum = ':free::free:' + EMPTY_DISPLAY
             else:
                 # It is number
                 ThisNum = '{:02d}'.format(int(i))
@@ -939,19 +947,23 @@ async def board(ctx, *args):
                 ThisNum = ThisNum.replace('7',':seven:')
                 ThisNum = ThisNum.replace('8',':eight:')
                 ThisNum = ThisNum.replace('9',':nine:')
+                ThisNum += EMPTY_DISPLAY
             if n >= 0 and (n+1) % 5 != 0:
-                LineEm = LineEm + ThisNum + '     '
+                LineEm += ThisNum
             elif n > 0 and (n+1) % 5 == 0:
-                LineEm = LineEm + ThisNum + '     '
-                em.add_field(name="-", value=LineEm, inline=False)
+                LineEm += ThisNum
+                LineEm_str += LineEm + "\n"
+                LineEm_str += 15*EMPTY_DISPLAY + "\n"
                 LineEm = ''
+        em.add_field(name=f"-", value=LineEm_str, inline=False)
+        em.add_field(name="OTHER LINKS", value="{} / {} / {}".format("[Use TipBot?](http://invite.discord.bot.tips)", "[Support Server](https://discord.com/invite/GpHzURM)", "[TipBot Github](https://github.com/wrkzcoin/TipBot)"), inline=False)
         if GameStart[12]:
             em.add_field(name="Remark", value=GameStart[12], inline=False)
 
         topBlock = gettopblock()
         em.set_footer(text="Will start at height "+str('{:,.0f}'.format(GameStart[1]))+" | Current Height: "+str('{:,.0f}'.format(topBlock['height'])))
 
-        if len(ListActivePlayer) < 8:
+        if len(ListActivePlayer) < 20:
             try:
                 await ctx.send(embed=em)
             except Exception as e:
@@ -1000,7 +1012,7 @@ async def card(ctx, *args):
                 boardOutput = boardOutput + '\n' + '*Remark*: '+str(GameStart[12])
 
             ListActivePlayer = List_bingo_active_players(GameStart[0])
-            if len(ListActivePlayer) < 8:
+            if len(ListActivePlayer) < 20:
                 await ctx.send(str(ctx.message.author.name)+': Your created board for game *#'+str(GameStart[0])+'* TYPE: ***'+str(GameStart[5])+'***\n'+boardOutput)
             else:
                 if ctx.message.channel.id == channelID:
@@ -1044,7 +1056,7 @@ async def card(ctx, *args):
         if GameStart[12]:
             boardOutput = boardOutput + '\n' + '*Remark*: '+str(GameStart[12])
         ListActivePlayer = List_bingo_active_players(GameStart[0])
-        if len(ListActivePlayer) < 8:
+        if len(ListActivePlayer) < 20:
             await ctx.send(str(ctx.message.author.name)+': Your board for game #'+str(GameStart[0])+' TYPE: ***'+str(GameStart[5])+'***\n'+boardOutput)
         else:
             if ctx.message.channel.id == channelID:
