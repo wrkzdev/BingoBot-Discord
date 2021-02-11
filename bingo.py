@@ -34,7 +34,7 @@ import requests, json
 import logging
 
 # MySQL
-import pymysql
+import pymysql.cursors
 
 # Setting up asyncio to use uvloop if possible, a faster implementation on the event loop
 import asyncio
@@ -221,11 +221,11 @@ def openConnection():
     global conn
     try:
         if conn is None:
-            conn = pymysql.connect(config.mysql.host, user=config.mysql.user, passwd=config.mysql.password,
-                                   db=config.mysql.db, connect_timeout=5)
+            conn = pymysql.connect(host=config.mysql.host, user=config.mysql.user, password=config.mysql.password,
+                                   db=config.mysql.db, charset='utf8mb4')
         elif not conn.open:
-            conn = pymysql.connect(config.mysql.host, user=config.mysql.user, passwd=config.mysql.password,
-                                   db=config.mysql.db, connect_timeout=5)
+            conn = pymysql.connect(host=config.mysql.host, user=config.mysql.user, password=config.mysql.password,
+                                   db=config.mysql.db, charset='utf8mb4')
         conn.ping(reconnect=True)  # reconnecting mysql
     except:
         print("ERROR: Unexpected error: Could not connect to MySql bingogame instance.")
@@ -236,13 +236,13 @@ def openConnectionBlockchain():
     global connBlockchain
     try:
         if connBlockchain is None:
-            connBlockchain = pymysql.connect(config.mysql.host_blockcache, user=config.mysql.user_blockcache, 
-                                             passwd=config.mysql.password_blockcache, db=config.mysql.db_blockcache, 
-                                             cursorclass=pymysql.cursors.DictCursor, connect_timeout=5)
-        elif (not connBlockchain.open):
-            connBlockchain = pymysql.connect(config.mysql.host_blockcache, user=config.mysql.user_blockcache, 
-                                             passwd=config.mysql.password_blockcache, db=config.mysql.db_blockcache, 
-                                             cursorclass=pymysql.cursors.DictCursor, connect_timeout=5)
+            connBlockchain = pymysql.connect(host=config.mysql.host_blockcache, user=config.mysql.user_blockcache, 
+                                             password=config.mysql.password_blockcache, db=config.mysql.db_blockcache, 
+                                             cursorclass=pymysql.cursors.DictCursor)
+        elif not connBlockchain.open:
+            connBlockchain = pymysql.connect(host=config.mysql.host_blockcache, user=config.mysql.user_blockcache, 
+                                             password=config.mysql.password_blockcache, db=config.mysql.db_blockcache, 
+                                             cursorclass=pymysql.cursors.DictCursor)
         connBlockchain.ping(reconnect=True)  # reconnecting mysql
     except:
         print("ERROR: Unexpected error: Could not connect to MySql blockcache instance.")
@@ -271,7 +271,6 @@ def CheckUser(userID, userName, GameID):
             else:
                 # Show data
                 return json.loads(result[1])
-            cur.close() 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     finally:
@@ -316,7 +315,6 @@ def CheckUserBoard(userID, gameID):
                             k += 1
                             UserBingoList[n] = '*'+str(row)+'*'
                 return UserBingoList
-            cur.close() 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     finally:
@@ -461,7 +459,6 @@ def CheckUserBingoType(userID, gameID, Type):
                         return Type
                     else:
                         return k
-            cur.close() 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     finally:
@@ -531,9 +528,7 @@ def Bingo_Start():
                       FROM `bingo_active_blocks` ORDER BY height ASC LIMIT 1 """
             cur.execute(sql,)
             result = cur.fetchone()
-            if result:
-                return result
-            cur.close() 
+            if result: return result
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     finally:
@@ -550,7 +545,6 @@ def Bingo_LastBlock():
             cur.execute(sql,)
             result = cur.fetchone()
             return result
-            cur.close() 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     finally:
@@ -569,7 +563,7 @@ def Bingo_CreateGame(startedBlock, discord_id, discord_name, gameType: str=None)
                 # Let's insert starting block info
                 current_Date = datetime.now()
                 topBlock = gettopblock()
-                if (startedBlock - 20) <= topBlock['height']:
+                if startedBlock - 20 <= topBlock['height']:
                     return None
                 else:
                     if gameType is None:
@@ -594,7 +588,6 @@ def Bingo_CreateGame(startedBlock, discord_id, discord_name, gameType: str=None)
             else:
                 # Let's show result. return their status
                 return result
-            cur.close() 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     finally:
@@ -611,7 +604,6 @@ def Bingo_LastGame():
             cur.execute(sql,)
             result = cur.fetchone()
             return result
-            cur.close() 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     finally:
@@ -627,7 +619,6 @@ def Bingo_LastGameResult():
             cur.execute(sql,)
             result = cur.fetchone()
             return result
-            cur.close() 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     finally:
@@ -649,7 +640,6 @@ def Bingo_LastGameResultList():
                 for row in result:
                     listRow.append([row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]])
                 return listRow
-            cur.close() 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     finally:
@@ -744,7 +734,6 @@ def Bingo_StartNow():
                 return [topBlock['height'], topBlock['hash'], current_Date, first2, last2]
             else:
                 return result
-            cur.close() 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     finally:
@@ -1499,12 +1488,12 @@ async def bingo(ctx, *args):
                         winMsg = 'You win. Bingo! Please wait to start new game.\nWinner is: <@'+str(ctx.message.author.id)+'>'
                         await botChan.send(f'{winMsg}')
                         def check(reaction, user):
-                            return (reaction.message.channel.id == channelID) and (user.id == TIPBOTID) and (str(reaction.emoji) in LIST_TIPREACT) and (reaction.message.author == bot.user)
+                            return reaction.message.channel.id == channelID and user.id == TIPBOTID and str(reaction.emoji) in LIST_TIPREACT and reaction.message.author == bot.user
                         if int(GameStart[6]) > 1:
                             winMsg = '.tip '+str(GameStart[6])+' '+'<@'+str(ctx.message.author.id)+'> You win. Bingo! Please wait to start new game.'
                             await botChan.send(f'{winMsg}')                        
                             try:
-                                reaction, user = await bot.wait_for('reaction_add', timeout=15.0, check=check)
+                                reaction, user = await bot.wait_for('reaction_add', timeout=30.0, check=check)
                             except asyncio.TimeoutError:
                                 await botChan.send('.tip '+str(GameStart[6])+' '+'<@'+str(ctx.message.author.id)+'> > RETRY')
                             else:
@@ -1512,7 +1501,7 @@ async def bingo(ctx, *args):
                         if rewardNotWin:
                             await botChan.send(f'{rewardNotWin}')
                             try:
-                                reaction, user = await bot.wait_for('reaction_add', timeout=15.0, check=check)
+                                reaction, user = await bot.wait_for('reaction_add', timeout=30.0, check=check)
                             except asyncio.TimeoutError:
                                 await botChan.send('.tip '+str(GameStart[8]) + ' ' + ListMentions+' > RETRY')
                             else:
@@ -1756,7 +1745,7 @@ def sumOfDigits(sentence):
 
 async def show_msgCard():
     global channelID, conn
-    botChan = bot.get_channel(int(channelID))
+    botChan = bot.get_channel(id=int(channelID))
     GameStart = Bingo_LastGame()
     SomeTips = [] # new list
     SomeTips.append('You can use `.board` only during game OPENED and ONGOING (if you register one).')
@@ -1847,9 +1836,7 @@ async def show_checkOpenedGame():
     botChan = bot.get_channel(int(channelID))
     GameStart = Bingo_LastGame()
     # Insert only if game is start
-    if GameStart is None:
-        pass
-    else:
+    if GameStart:
         ListActivePlayer = List_bingo_active_players(GameStart[0])
         topBlock = gettopblock()
         if GameStart[2].upper() == 'OPENED':
@@ -1961,7 +1948,10 @@ async def show_randomMsg():
     await bot.wait_until_ready()
     while True:
         await asyncio.sleep(3)  # 5 second before doing anything
-        await show_msgCard()
+        try:
+            await show_msgCard()
+        except Exception as e:
+            traceback.print_exc(file=sys.stdout)
         await asyncio.sleep(120)  # sleep 3mn
 
 
