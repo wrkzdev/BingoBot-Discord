@@ -783,7 +783,7 @@ channelID = config.discord.channelID
 @bot.command(pass_context=True, name='sayme')
 async def sayme(ctx):
     global maintainerOwner
-    if ctx.message.author.id in maintainerOwner:
+    if ctx.author.id in maintainerOwner:
         try:
             await ctx.send(str(ctx.message.content).replace(".sayme", ""))
         except Exception as e:
@@ -810,7 +810,7 @@ async def board(ctx, *args):
         return
     if GameStart[2].upper() == 'ONGOING':
         try:
-            board = CheckUserBoard(ctx.message.author.id, GameStart[0])
+            board = CheckUserBoard(ctx.author.id, GameStart[0])
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
         if board is None:
@@ -909,9 +909,9 @@ async def board(ctx, *args):
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
 
-        board = CheckUser(str(ctx.message.author.id), ctx.message.author.name, GameStart[0])
+        board = CheckUser(str(ctx.author.id), ctx.message.author.name, GameStart[0])
         ListActivePlayer = List_bingo_active_players(GameStart[0])
-        board = CheckUserBoard(ctx.message.author.id, GameStart[0])
+        board = CheckUserBoard(ctx.author.id, GameStart[0])
         em.add_field(name="-", value=f"{15*EMPTY_DISPLAY}\n"+ f"{2*EMPTY_DISPLAY}:regional_indicator_w::regional_indicator_r::regional_indicator_k::regional_indicator_z:{2*EMPTY_DISPLAY}"
             f":regional_indicator_b::regional_indicator_i::regional_indicator_n::regional_indicator_g::regional_indicator_o:{2*EMPTY_DISPLAY}\n" + f"{15*EMPTY_DISPLAY}\n", inline=False)
         LineEm = ''
@@ -991,7 +991,7 @@ async def card(ctx, *args):
         await ctx.send('There is no game opened yet.')
         return
     if GameStart[2].upper() == 'ONGOING':
-        board = CheckUserBoard(ctx.message.author.id, GameStart[0])
+        board = CheckUserBoard(ctx.author.id, GameStart[0])
         if board is None:
             await ctx.send('Game is already on going. Please wait for a new one.')
             return
@@ -1040,7 +1040,7 @@ async def card(ctx, *args):
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
 
-        board = CheckUser(str(ctx.message.author.id), ctx.message.author.name, GameStart[0])
+        board = CheckUser(str(ctx.author.id), ctx.message.author.name, GameStart[0])
         boardOutput = '`' + boardDump(smallWords(board, 6), 6) + '`'
         if GameStart[12]:
             boardOutput = boardOutput + '\n' + '*Remark*: '+str(GameStart[12])
@@ -1207,18 +1207,18 @@ async def bingo(ctx, *args):
                 openConnection()
                 with conn.cursor() as cur:
                     sql = "SELECT `discord_id`, `discord_name` FROM `bingo_reminder` WHERE `discord_id`=%s"
-                    cur.execute(sql, (str(ctx.message.author.id)))
+                    cur.execute(sql, (str(ctx.author.id)))
                     result = cur.fetchone()
                     if result is None:
                         # Insert to remind
                         sql = "INSERT INTO bingo_reminder (`discord_id`, `discord_name`) VALUES (%s, %s)"
-                        cur.execute(sql, (str(ctx.message.author.id), str(ctx.message.author.name)))
+                        cur.execute(sql, (str(ctx.author.id), str(ctx.message.author.name)))
                         conn.commit()
                         remindMsg = 'You have toggle to get __alert__ from bot when game opened.'
                     else:
                         # Insert to remind
                         sql = "DELETE FROM bingo_reminder WHERE `discord_id`=%s"
-                        cur.execute(sql, (str(ctx.message.author.id)))
+                        cur.execute(sql, (str(ctx.author.id)))
                         conn.commit()
                         remindMsg = 'You will __not__ getting an alert from bot when game opened. `.bingo remind` again to enable.'
             except Exception as e:
@@ -1232,7 +1232,7 @@ async def bingo(ctx, *args):
                 await ctx.send('Game is already ONGOING or OPENED. Type `.bingo` for more info.')
                 return                
             topBlock = gettopblock()
-            bingoStarted = Bingo_CreateGame(int(topBlock['height'])+BINGO_STARTAT, ctx.message.author.id, ctx.message.author.name)
+            bingoStarted = Bingo_CreateGame(int(topBlock['height'])+BINGO_STARTAT, ctx.author.id, ctx.message.author.name)
             if bingoStarted is None:
                 await ctx.send('Internal error during creating game.')
                 return
@@ -1244,14 +1244,14 @@ async def bingo(ctx, *args):
                 createdMsg.append('Anybody saw? %s just made a new bingo game')
                 createdMsg.append('Let\'s join bingo with %s')
                 createdMsg.append('Do not make %s upset with this new game')
-                userMention = '<@'+str(ctx.message.author.id)+'>'
+                userMention = '<@'+str(ctx.author.id)+'>'
                 randMessageCreate = str(random.choice(createdMsg)).replace('%s', userMention)
                 # let's alert reminding.
                 remindMsg = ''
                 remindMsg = 'Game created. ID: #'+'{:,.0f}'.format(bingoStarted[0])+' at height: '+'{:,.0f}'.format(bingoStarted[1])+'. TYPE: '+bingoStarted[8]+'\n'
 
                 # let's create straightaway to game starter
-                board = CheckUser(str(ctx.message.author.id), ctx.message.author.name, bingoStarted[0])
+                board = CheckUser(str(ctx.author.id), ctx.message.author.name, bingoStarted[0])
                 boardOutput = '`' + boardDump(smallWords(board, 6), 6) + '`'
                 # let's post his board straightaway
 
@@ -1289,7 +1289,7 @@ async def bingo(ctx, *args):
         elif ArgQ[0].upper() == 'MODE' or ArgQ[0].upper() == 'TYPE':
             # OK let's show when it will start or when it was started
             # .bingo start # show when or none
-            if ctx.message.author.id in maintainerOwner:
+            if ctx.author.id in maintainerOwner:
                 # OK Owner do it
                 if len(ArgQ) == 1:
                     await ctx.message.author.send('You need to input type of game F: FULL HOUSE, L: LINE, D: DIAGONALS, C: FOUR CORNERS, A: ANY. Example: `MODE A`')
@@ -1332,7 +1332,7 @@ async def bingo(ctx, *args):
         elif ArgQ[0].upper() == 'REWARD' or ArgQ[0].upper() == 'PRICE':
             # OK let's show when it will start or when it was started
             # .bingo start # show when or none
-            if ctx.message.author.id in maintainerOwner:
+            if ctx.author.id in maintainerOwner:
                 # OK Owner do it
                 if len(ArgQ) == 1:
                     await ctx.message.author.send('You need to input type the reward of this game. ie. `reward 10000`')
@@ -1365,7 +1365,7 @@ async def bingo(ctx, *args):
         elif ArgQ[0].upper() == 'PLAYREWARD' or ArgQ[0].upper() == 'REWARDPLAY':
             # OK let's show when it will start or when it was started
             # .bingo start # show when or none
-            if ctx.message.author.id in maintainerOwner:
+            if ctx.author.id in maintainerOwner:
                 # OK Owner do it
                 if len(ArgQ) == 1:
                     await ctx.message.author.send('You need to input type the reward of this game. ie. `reward 10000`')
@@ -1410,7 +1410,7 @@ async def bingo(ctx, *args):
                     return
                 # Check user card with blocks hash
                 elif GameStart[2] == 'ONGOING':
-                    board = CheckUserBoard(ctx.message.author.id, GameStart[0])
+                    board = CheckUserBoard(ctx.author.id, GameStart[0])
                     # If no board, reply user.
                     if board is None:
                         await ctx.send('You are late. Game is already ongoing. Please wait for a new one.')
@@ -1419,27 +1419,27 @@ async def bingo(ctx, *args):
                     if str(GameStart[5])=='ANY':
                         # ANY GAME:
                         try:
-                            UserBingo1 = CheckUserBingoType(ctx.message.author.id, GameStart[0], 'FOUR CORNERS')
+                            UserBingo1 = CheckUserBingoType(ctx.author.id, GameStart[0], 'FOUR CORNERS')
                             if str(UserBingo1) == 'FOUR CORNERS':
                                 UserBingo = 'ANY'
-                            UserBingo2 = CheckUserBingoType(ctx.message.author.id, GameStart[0], 'LINE')
+                            UserBingo2 = CheckUserBingoType(ctx.author.id, GameStart[0], 'LINE')
                             if str(UserBingo2) == 'LINE':
                                 UserBingo = 'ANY'
-                            UserBingo3 = CheckUserBingoType(ctx.message.author.id, GameStart[0], 'DIAGONALS')
+                            UserBingo3 = CheckUserBingoType(ctx.author.id, GameStart[0], 'DIAGONALS')
                             if str(UserBingo3) == 'DIAGONALS':
                                 UserBingo = 'ANY'
-                            UserBingo4 = CheckUserBingoType(ctx.message.author.id, GameStart[0], 'FULL HOUSE')
+                            UserBingo4 = CheckUserBingoType(ctx.author.id, GameStart[0], 'FULL HOUSE')
                             if str(UserBingo4) == 'FULL HOUSE':
                                 UserBingo = 'ANY'
                         except:
                             pass
                     else:
                         try:
-                            UserBingo = CheckUserBingoType(ctx.message.author.id, GameStart[0], str(GameStart[5]))
+                            UserBingo = CheckUserBingoType(ctx.author.id, GameStart[0], str(GameStart[5]))
                         except:
                             pass
                 if UserBingo is None:
-                    KickUser(ctx.message.author.id, GameStart[0])
+                    KickUser(ctx.author.id, GameStart[0])
                     await ctx.send('Did you check? No BINGO yet!! You\'re out from the game now.')
                     await botChan.send(str(ctx.message.author.name)+' was kicked from .bingo in DM.')						
                     return
@@ -1451,7 +1451,7 @@ async def bingo(ctx, *args):
                             ListActivePlayer = List_bingo_active_players(GameStart[0])
                             if ListActivePlayer:
                                 for (i, item) in enumerate(ListActivePlayer):
-                                    if int(item[0]) != ctx.message.author.id:
+                                    if int(item[0]) != ctx.author.id:
                                         ListMentions = ListMentions + '<@'+str(item[0])+'>'+' '
                                 rewardNotWin = '.tip '+str(GameStart[8]) + ' ' + ListMentions + 'Thank you for playing.'
                         try:
@@ -1460,7 +1460,7 @@ async def bingo(ctx, *args):
                             openConnection()
                             with conn.cursor() as cur:
                                 sql = "UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, `claim_Atheight`=%s WHERE `id`=%s"
-                                cur.execute(sql, ('COMPLETED', str(current_Date), str(ctx.message.author.id), str(ctx.message.author.name), str(topBlock['height']), str(GameStart[0])))
+                                cur.execute(sql, ('COMPLETED', str(current_Date), str(ctx.author.id), str(ctx.message.author.name), str(topBlock['height']), str(GameStart[0])))
                                 conn.commit()
                         except Exception as e:
                             traceback.print_exc(file=sys.stdout)
@@ -1485,17 +1485,17 @@ async def bingo(ctx, *args):
                             traceback.print_exc(file=sys.stdout)
                         finally:
                             conn.close()
-                        winMsg = 'You win. Bingo! Please wait to start new game.\nWinner is: <@'+str(ctx.message.author.id)+'>'
+                        winMsg = 'You win. Bingo! Please wait to start new game.\nWinner is: <@'+str(ctx.author.id)+'>'
                         await botChan.send(f'{winMsg}')
                         def check(reaction, user):
                             return reaction.message.channel.id == channelID and user.id == TIPBOTID and str(reaction.emoji) in LIST_TIPREACT and reaction.message.author == bot.user
                         if int(GameStart[6]) > 1:
-                            winMsg = '.tip '+str(GameStart[6])+' '+'<@'+str(ctx.message.author.id)+'> You win. Bingo! Please wait to start new game.'
+                            winMsg = '.tip '+str(GameStart[6])+' '+'<@'+str(ctx.author.id)+'> You win. Bingo! Please wait to start new game.'
                             await botChan.send(f'{winMsg}')                        
                             try:
                                 reaction, user = await bot.wait_for('reaction_add', timeout=30.0, check=check)
                             except asyncio.TimeoutError:
-                                await botChan.send('.tip '+str(GameStart[6])+' '+'<@'+str(ctx.message.author.id)+'> > RETRY')
+                                pass
                             else:
                                 pass
                         if rewardNotWin:
@@ -1503,13 +1503,13 @@ async def bingo(ctx, *args):
                             try:
                                 reaction, user = await bot.wait_for('reaction_add', timeout=30.0, check=check)
                             except asyncio.TimeoutError:
-                                await botChan.send('.tip '+str(GameStart[8]) + ' ' + ListMentions+' > RETRY')
+                                pass
                             else:
                                 pass
                         return
                     else:
-                        KickUser(ctx.message.author.id, GameStart[0])
-                        await botChan.send('<@'+str(ctx.message.author.id)+'>! Did you check? No BINGO yet!! You\'re out from the game now.')
+                        KickUser(ctx.author.id, GameStart[0])
+                        await botChan.send('<@'+str(ctx.author.id)+'>! Did you check? No BINGO yet!! You\'re out from the game now.')
                         return
         elif ArgQ[0].upper() == 'BALL':  
             # .bingo card. Check last ball
@@ -1598,14 +1598,14 @@ async def bingo(ctx, *args):
                 return
         elif ArgQ[0].upper() == 'RESTART' or ArgQ[0].upper() == 'RELOAD':
             # Check permission
-            if ctx.message.author.id in maintainerOwner:
+            if ctx.author.id in maintainerOwner:
                 await ctx.message.author.send('Bot is rebooting...')
                 await asyncio.sleep(2)
                 sys.exit(0)
             else:
                 await ctx.message.author.send('Access denied...')
                 return
-        elif ArgQ[0].upper() == 'END' and (ctx.message.author.id in maintainerOwner):
+        elif ArgQ[0].upper() == 'END' and (ctx.author.id in maintainerOwner):
             # let's end the game and let BingoBot win
             if GameStart is None:
                 await ctx.send('There is no game started yet. Please ask to start.')
@@ -1659,7 +1659,7 @@ async def bingo(ctx, *args):
                         try:
                             reaction, user = await bot.wait_for('reaction_add', timeout=15.0, check=check)
                         except asyncio.TimeoutError:
-                            await botChan.send('.tip '+str(GameStart[8]) + ' ' + ListMentions+' > RETRY')
+                            pass
                     return
                 elif GameStart[2] == 'COMPLETED':
                     await ctx.send('Game was completed. Please start a new one.')
