@@ -479,7 +479,7 @@ def KickUser(userID, GameID):
                     current_Date = datetime.now()
                     openConnection()
                     with conn.cursor() as cur:
-                        sql = "UPDATE bingo_active_players SET `kicked`=%s,`kicked_when`=%s WHERE `discord_id`=%s AND `gameID`=%s"
+                        sql = """ UPDATE bingo_active_players SET `kicked`=%s,`kicked_when`=%s WHERE `discord_id`=%s AND `gameID`=%s """
                         cur.execute(sql, ('YES', str(current_Date), str(userID), str(GameID)))
                         conn.commit()
                 except Exception as e:
@@ -1206,18 +1206,18 @@ async def bingo(ctx, *args):
             try:
                 openConnection()
                 with conn.cursor() as cur:
-                    sql = "SELECT `discord_id`, `discord_name` FROM `bingo_reminder` WHERE `discord_id`=%s"
+                    sql = """ SELECT `discord_id`, `discord_name` FROM `bingo_reminder` WHERE `discord_id`=%s """
                     cur.execute(sql, (str(ctx.author.id)))
                     result = cur.fetchone()
                     if result is None:
                         # Insert to remind
-                        sql = "INSERT INTO bingo_reminder (`discord_id`, `discord_name`) VALUES (%s, %s)"
+                        sql = """ INSERT INTO bingo_reminder (`discord_id`, `discord_name`) VALUES (%s, %s) """
                         cur.execute(sql, (str(ctx.author.id), str(ctx.message.author.name)))
                         conn.commit()
                         remindMsg = 'You have toggle to get __alert__ from bot when game opened.'
                     else:
                         # Insert to remind
-                        sql = "DELETE FROM bingo_reminder WHERE `discord_id`=%s"
+                        sql = """ DELETE FROM bingo_reminder WHERE `discord_id`=%s """
                         cur.execute(sql, (str(ctx.author.id)))
                         conn.commit()
                         remindMsg = 'You will __not__ getting an alert from bot when game opened. `.bingo remind` again to enable.'
@@ -1317,7 +1317,7 @@ async def bingo(ctx, *args):
                         try:
                             openConnection()
                             with conn.cursor() as cur:
-                                sql = "UPDATE bingo_gamelist SET `gameType`=%s WHERE `id`=%s"
+                                sql = """ UPDATE bingo_gamelist SET `gameType`=%s WHERE `id`=%s """
                                 cur.execute(sql, (gameType, GameStart[0]))
                                 conn.commit()
                         except Exception as e:
@@ -1350,7 +1350,7 @@ async def bingo(ctx, *args):
                         try:
                             openConnection()
                             with conn.cursor() as cur:
-                                sql = "UPDATE bingo_gamelist SET `reward`=%s WHERE `id`=%s"
+                                sql = """ UPDATE bingo_gamelist SET `reward`=%s WHERE `id`=%s """
                                 cur.execute(sql, (RewardPrice, GameStart[0]))
                                 conn.commit()
                         except Exception as e:
@@ -1383,7 +1383,7 @@ async def bingo(ctx, *args):
                         try:
                             openConnection()
                             with conn.cursor() as cur:
-                                sql = "UPDATE bingo_gamelist SET `rewardNotWin`=%s WHERE `id`=%s"
+                                sql = """ UPDATE bingo_gamelist SET `rewardNotWin`=%s WHERE `id`=%s """
                                 cur.execute(sql, (RewardPrice, GameStart[0]))
                                 conn.commit()
                         except Exception as e:
@@ -1459,7 +1459,7 @@ async def bingo(ctx, *args):
                             topBlock = gettopblock()
                             openConnection()
                             with conn.cursor() as cur:
-                                sql = "UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, `claim_Atheight`=%s WHERE `id`=%s"
+                                sql = """ UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, `claim_Atheight`=%s WHERE `id`=%s """
                                 cur.execute(sql, ('COMPLETED', str(current_Date), str(ctx.author.id), str(ctx.message.author.name), str(topBlock['height']), str(GameStart[0])))
                                 conn.commit()
                         except Exception as e:
@@ -1615,7 +1615,7 @@ async def bingo(ctx, *args):
                         topBlock = gettopblock()
                         openConnection()
                         with conn.cursor() as cur:
-                            sql = "UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, `claim_Atheight`=%s WHERE `id`=%s"
+                            sql = """ UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, `claim_Atheight`=%s WHERE `id`=%s """
                             cur.execute(sql, ('COMPLETED', str(current_Date), str(bot.user.id), str(bot.user.name), str(topBlock['height']), str(GameStart[0])))
                             conn.commit()
                     except Exception as e:
@@ -1756,7 +1756,7 @@ async def show_msgCard():
         try:
             openConnection()
             with conn.cursor() as cur:
-                sql = "SELECT `discord_id`, `discord_name` FROM `bingo_reminder`"
+                sql = """ SELECT `discord_id`, `discord_name` FROM `bingo_reminder` """
                 cur.execute(sql,)
                 result = cur.fetchall()
                 if result:
