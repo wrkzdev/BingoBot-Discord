@@ -1763,8 +1763,14 @@ async def show_msgCard():
                     for row in result:
                         # If they are online
                         # reminderListIds.append(int(row[0]))
-                        if int(row[0]) not in playerIDs:
-                            SomeTips.append('Do you want to play bingo? <@'+str(row[0])+'>. It is not late yet.  `.bingo remind` If you want me to stop this ping.')
+                        # Check if user in the guild
+                        try:
+                            member = bot.get_user(int(row[0]))
+                            if member and int(row[0]) not in playerIDs:
+                                SomeTips.append('Do you want to play bingo? <@'+str(row[0])+'>. It is not late yet.  `.bingo remind` If you want me to stop this ping.')
+                        except Exception as e:
+                            traceback.print_exc(file=sys.stdout)
+                            
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
         finally:
