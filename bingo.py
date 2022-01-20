@@ -30,12 +30,18 @@ from datetime import datetime
 import logging
 
 # MySQL
+import pymysql
 import pymysql.cursors
+import aiomysql
+from aiomysql.cursors import DictCursor
 
 # Setting up asyncio to use uvloop if possible, a faster implementation on the event loop
 import asyncio
 from config import config
 import sys, traceback
+
+pool = None
+pool_chain = None
 
 remindedStart = 0
 remindedBlock = 0
@@ -188,513 +194,462 @@ def generateBoard():
     return bingoList[:25]
 
 
-def openConnection():
-    global conn
+# openConnection
+async def openConnection():
+    global pool
     try:
-        if conn is None:
-            conn = pymysql.connect(host=config.mysql.host, user=config.mysql.user, password=config.mysql.password,
-                                   db=config.mysql.db, charset='utf8mb4')
-        elif not conn.open:
-            conn = pymysql.connect(host=config.mysql.host, user=config.mysql.user, password=config.mysql.password,
-                                   db=config.mysql.db, charset='utf8mb4')
-        conn.ping(reconnect=True)  # reconnecting mysql
+        if pool is None:
+            pool = await aiomysql.create_pool(host=config.mysql.host, port=3306, minsize=2, maxsize=4, 
+                                                   user=config.mysql.user, password=config.mysql.password,
+                                                   db=config.mysql.db, autocommit=True) # cursorclass=DictCursor
     except:
         traceback.print_exc(file=sys.stdout)
-        sys.exit()
 
 
-def openConnectionBlockchain():
-    global connBlockchain
+async def openConnectionBlockchain():
+    global pool_chain
     try:
-        if connBlockchain is None:
-            connBlockchain = pymysql.connect(host=config.mysql.host_blockcache, user=config.mysql.user_blockcache, 
-                                             password=config.mysql.password_blockcache, db=config.mysql.db_blockcache, 
-                                             cursorclass=pymysql.cursors.DictCursor)
-        elif not connBlockchain.open:
-            connBlockchain = pymysql.connect(host=config.mysql.host_blockcache, user=config.mysql.user_blockcache, 
-                                             password=config.mysql.password_blockcache, db=config.mysql.db_blockcache, 
-                                             cursorclass=pymysql.cursors.DictCursor)
-        connBlockchain.ping(reconnect=True)  # reconnecting mysql
+        if pool_chain is None:
+            pool_chain = await aiomysql.create_pool(host=config.mysql.host_blockcache, port=3306, minsize=2, maxsize=4, 
+                                                   user=config.mysql.user_blockcache, password=config.mysql.password_blockcache,
+                                                   db=config.mysql.db_blockcache, autocommit=True, cursorclass=DictCursor)
     except:
         traceback.print_exc(file=sys.stdout)
-        sys.exit()
 
 
-def CheckUser(userID, userName, GameID):
+async def CheckUser(userID, userName, GameID):
+    global pool
     try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
-                      FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s LIMIT 1 """
-            cur.execute(sql, (userID, GameID))
-            result = cur.fetchone()
-            if result is None:
-                # Insert
-                board = generateBoard()
-                boardJson = json.dumps(board)
-                current_Date = datetime.now()
-                sql = """ INSERT INTO bingo_active_players (`discord_id`, `discord_name`, `started`, `board_json`, 
-                          `board_jsonStar`, `GameID`) 
-                          VALUES (%s, %s, %s, %s, %s, %s) """
-                cur.execute(sql, (str(userID), str(userName), current_Date, boardJson, boardJson, GameID))
-                conn.commit()
-                return board
-            else:
-                # Show data
-                return json.loads(result[1])
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
+                          FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s LIMIT 1 """
+                await cur.execute(sql, (userID, GameID))
+                result = await cur.fetchone()
+                if result is None:
+                    # Insert
+                    board = generateBoard()
+                    boardJson = json.dumps(board)
+                    current_Date = datetime.now()
+                    sql = """ INSERT INTO bingo_active_players (`discord_id`, `discord_name`, `started`, `board_json`, 
+                              `board_jsonStar`, `GameID`) 
+                              VALUES (%s, %s, %s, %s, %s, %s) """
+                    await cur.execute(sql, (str(userID), str(userName), current_Date, boardJson, boardJson, GameID))
+                    await conn.commit()
+                    return board
+                else:
+                    # Show data
+                    return json.loads(result[1])
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
 
 
-def CheckUserBoard(userID, gameID):
-    GameStart = Bingo_LastGame()
+async def CheckUserBoard(userID, gameID):
+    global pool_chain, pool
+    GameStart = await Bingo_LastGame()
     try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
-                      FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s AND `kicked`='NO' LIMIT 1 """
-            cur.execute(sql, (str(userID), gameID))
-            result = cur.fetchone()
-            if result:
-                # Start connection to blockchain
-                ListChain = []  # For unique list of numbers
-                try:
-                    openConnectionBlockchain()
-                    with connBlockchain.cursor() as curBlockchain:
-                        sql = """ SELECT `height`, `hash`, `difficulty`,`timestamp` 
-                                  FROM blocks WHERE height > %s ORDER BY height DESC  LIMIT 10000 """
-                        curBlockchain.execute(sql, (GameStart[1]))
-                        rows = curBlockchain.fetchall()
-                        for row in rows:
-                            sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
-                            if sum_75 not in ListChain:
-                                ListChain.append(sum_75)
-                except Exception as e:
-                    traceback.print_exc(file=sys.stdout)
-                # End connection to blockchain
-                k = 0
-                UserBingoList = json.loads(result[1])
-                for row in ListChain:
-                    for n, i in enumerate(UserBingoList):
-                        if str(i) == str(row):
-                            k += 1
-                            UserBingoList[n] = '*'+str(row)+'*'
-                return UserBingoList
-    except Exception as e:
-        traceback.print_exc(file=sys.stdout)
-    return None
-
-
-def CheckUserBingoType(userID, gameID, Type):
-    GameStart = Bingo_LastGame()
-    if GameStart[2].upper() == 'COMPLETED':
-        return None
-    try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
-                      FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s AND `kicked`='NO' LIMIT 1 """
-            cur.execute(sql, (userID, gameID))
-            result = cur.fetchone()
-            if result:
-                # SELECT height, hash, difficulty from blocks where height BETWEEN 254400 AND 254481 ORDER BY height DESC
-                try:
-                    openConnectionBlockchain()
-                    with connBlockchain.cursor() as curBlockchain:
-                        sql = """ SELECT `height`, `hash`, `difficulty`,`timestamp` 
-                                  FROM blocks where height > %s ORDER BY height DESC  LIMIT 10000 """
-                        curBlockchain.execute(sql, (GameStart[1]))
-                        rows = curBlockchain.fetchall()
-                        ListChain = []  # For unique list of numbers
-                        for row in rows:
-                            sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
-                            if sum_75 not in ListChain:
-                                ListChain.append(sum_75)
-                except Exception as e:
-                    traceback.print_exc(file=sys.stdout)
-                # End of select from wrkz_blockchain
-                if Type.upper() == 'FOUR CORNERS':
-                    # FOUR CORNERS, four numbers at corner to win
-                    number_list = []
-                    k = 0
-                    UserBingoList = json.loads(result[1])
-                    number_list.extend([UserBingoList[0], UserBingoList[4], UserBingoList[20], UserBingoList[24]])
-                    j = 0
-                    for row in ListChain:
-                        for (n, i) in enumerate(number_list):
-                            if str(i) == str(row):
-                                k += 1
-                    if k == 4:
-                        return Type
-                    else:
-                        return k
-                elif Type.upper() == 'LINE':
-                    # LINE: a single line can win either diagonal
-                    k = 0
-                    UserBingoList = json.loads(result[1])
-                    z = 0
-                    # Horizontal
-                    while z < 5:
-                        m = 0
-                        number_list = []
-                        if z != 2:
-                            number_list.extend([UserBingoList[5*z], UserBingoList[5*z+1], UserBingoList[5*z+2], UserBingoList[5*z+3], UserBingoList[5*z+4]])
-                        else:
-                            number_list.extend([UserBingoList[5*z], UserBingoList[5*z+1], UserBingoList[5*z+3], UserBingoList[5*z+4]])
-                        for row in ListChain:
-                            for (n, i) in enumerate(number_list):
-                                if str(i) == str(row):
-                                    m += 1
-                        if (z != 2 and m==5) or (z == 2 and m==4):
-                            k += 1
-                        z += 1
-                    # Vertical
-                    z = 0
-                    while z < 5:
-                        m = 0
-                        number_list = []
-                        if z != 2:
-                            number_list.extend([UserBingoList[z], UserBingoList[z+5], UserBingoList[z+10], UserBingoList[z+15], UserBingoList[z+20]])
-                        else:
-                            number_list.extend([UserBingoList[z], UserBingoList[z+5], UserBingoList[z+15], UserBingoList[z+20]])
-                        for row in ListChain:
-                            for (n, i) in enumerate(number_list):
-                                if str(i) == str(row):
-                                    m += 1
-                        if (z != 2 and m==5) or (z == 2 and m==4):
-                            k += 1
-                        z += 1
-                    # Diagonal 1
-                    m = 0
-                    number_list = []
-                    number_list.extend([UserBingoList[0], UserBingoList[6], UserBingoList[18], UserBingoList[24]])
-                    for row in ListChain:
-                        for (n, i) in enumerate(number_list):
-                            if str(i) == str(row):
-                                m += 1
-                    # If matches 4 numbers, add k+
-                    if m == 4:
-                        k += 1
-                    m = 0  # reset m to 0
-                    # Diagonal 2
-                    number_list = []
-                    number_list.extend([UserBingoList[4], UserBingoList[8], UserBingoList[16], UserBingoList[20]])
-                    for row in ListChain:
-                        for (n, i) in enumerate(number_list):
-                            if str(i) == str(row):
-                                m += 1
-                    # If matches 4 numbers, add k+
-                    if m == 4:
-                        k += 1
-                    if k >= 1:
-                        # print(k) ## this will return number of straight line vertical or horizontal
-                        return Type
-                    else:
-                        return k
-                elif Type.upper() == 'DIAGONALS':
-                    # DIAGONALS: X lines 0, 4, 6, 8, 16,18 , 20, 24
-                    number_list = []
-                    k = 0
-                    UserBingoList = json.loads(result[1])
-                    number_list.extend([UserBingoList[0], UserBingoList[6], UserBingoList[18], UserBingoList[24]])
-                    number_list.extend([UserBingoList[4], UserBingoList[8], UserBingoList[16], UserBingoList[20]])
-                    j = 0
-                    for row in ListChain:
-                        for (n, i) in enumerate(number_list):
-                            if str(i) == str(row):
-                                k += 1
-                    if k == 8:
-                        return Type
-                    else:
-                        return k
-                elif Type.upper() == 'FULL HOUSE':
-                    # FULL HOUSE: all numbers in
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
+                          FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s AND `kicked`='NO' LIMIT 1 """
+                await cur.execute(sql, (str(userID), gameID))
+                result = await cur.fetchone()
+                if result:
+                    # Start connection to blockchain
+                    ListChain = []  # For unique list of numbers
+                    try:
+                        await openConnectionBlockchain()
+                        async with pool_chain.acquire() as connBlockchain:
+                            async with connBlockchain.cursor() as curBlockchain:
+                                sql = """ SELECT `height`, `hash`, `difficulty`,`timestamp` 
+                                          FROM blocks WHERE height > %s ORDER BY height DESC  LIMIT 10000 """
+                                await curBlockchain.execute(sql, (GameStart[1]))
+                                rows = await curBlockchain.fetchall()
+                                for row in rows:
+                                    sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
+                                    if sum_75 not in ListChain:
+                                        ListChain.append(sum_75)
+                    except Exception as e:
+                        traceback.print_exc(file=sys.stdout)
+                    # End connection to blockchain
                     k = 0
                     UserBingoList = json.loads(result[1])
                     for row in ListChain:
                         for n, i in enumerate(UserBingoList):
                             if str(i) == str(row):
                                 k += 1
-                    if k >= 24:
-                        return Type
-                    else:
-                        return k
+                                UserBingoList[n] = '*'+str(row)+'*'
+                    return UserBingoList
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     return None
 
 
-def KickUser(userID, GameID):
+async def CheckUserBingoType(userID, gameID, Type):
+    global pool_chain, pool
+    GameStart = await Bingo_LastGame()
+    if GameStart[2].upper() == 'COMPLETED':
+        return None
     try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
-                      FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s LIMIT 1 """
-            cur.execute(sql, (str(userID), GameID))
-            result = cur.fetchone()
-            if result:
-                try:
-                    current_Date = datetime.now()
-                    openConnection()
-                    with conn.cursor() as cur:
-                        sql = """ UPDATE bingo_active_players SET `kicked`=%s,`kicked_when`=%s WHERE `discord_id`=%s AND `gameID`=%s """
-                        cur.execute(sql, ('YES', str(current_Date), str(userID), str(GameID)))
-                        conn.commit()
-                except Exception as e:
-                    traceback.print_exc(file=sys.stdout) 
-    except Exception as e:
-        traceback.print_exc(file=sys.stdout)
-
-
-def CheckInfoUser(userID, GameID):
-    try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
-                      FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s LIMIT 1 """
-            cur.execute(sql, (userID, GameID))
-            result = cur.fetchone()
-            return result
-    except Exception as e:
-        traceback.print_exc(file=sys.stdout)
-
-
-def List_bingo_active_players(GameID):
-    try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT discord_id, discord_name, started, board_json, board_jsonStar, kicked, kicked_when, gameID 
-                      FROM `bingo_active_players` WHERE `gameID`=%s """
-            cur.execute(sql, GameID)
-            result = cur.fetchall()
-            return result
-    except Exception as e:
-        traceback.print_exc(file=sys.stdout)
-
-
-def Bingo_Start():
-    try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT height, hash, active, first2_75, last2_75, sum_numbers 
-                      FROM `bingo_active_blocks` ORDER BY height ASC LIMIT 1 """
-            cur.execute(sql,)
-            result = cur.fetchone()
-            if result: return result
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
+                          FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s AND `kicked`='NO' LIMIT 1 """
+                await cur.execute(sql, (userID, gameID))
+                result = await cur.fetchone()
+                if result:
+                    # SELECT height, hash, difficulty from blocks where height BETWEEN 254400 AND 254481 ORDER BY height DESC
+                    try:
+                        await openConnectionBlockchain()
+                        async with pool_chain.acquire() as connBlockchain:
+                            async with connBlockchain.cursor() as curBlockchain:
+                                sql = """ SELECT `height`, `hash`, `difficulty`,`timestamp` 
+                                          FROM blocks where height > %s ORDER BY height DESC  LIMIT 10000 """
+                                await curBlockchain.execute(sql, (GameStart[1]))
+                                rows = await curBlockchain.fetchall()
+                                ListChain = []  # For unique list of numbers
+                                for row in rows:
+                                    sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
+                                    if sum_75 not in ListChain:
+                                        ListChain.append(sum_75)
+                    except Exception as e:
+                        traceback.print_exc(file=sys.stdout)
+                    # End of select from wrkz_blockchain
+                    if Type.upper() == 'FOUR CORNERS':
+                        # FOUR CORNERS, four numbers at corner to win
+                        number_list = []
+                        k = 0
+                        UserBingoList = json.loads(result[1])
+                        number_list.extend([UserBingoList[0], UserBingoList[4], UserBingoList[20], UserBingoList[24]])
+                        j = 0
+                        for row in ListChain:
+                            for (n, i) in enumerate(number_list):
+                                if str(i) == str(row):
+                                    k += 1
+                        if k == 4:
+                            return Type
+                        else:
+                            return k
+                    elif Type.upper() == 'LINE':
+                        # LINE: a single line can win either diagonal
+                        k = 0
+                        UserBingoList = json.loads(result[1])
+                        z = 0
+                        # Horizontal
+                        while z < 5:
+                            m = 0
+                            number_list = []
+                            if z != 2:
+                                number_list.extend([UserBingoList[5*z], UserBingoList[5*z+1], UserBingoList[5*z+2], UserBingoList[5*z+3], UserBingoList[5*z+4]])
+                            else:
+                                number_list.extend([UserBingoList[5*z], UserBingoList[5*z+1], UserBingoList[5*z+3], UserBingoList[5*z+4]])
+                            for row in ListChain:
+                                for (n, i) in enumerate(number_list):
+                                    if str(i) == str(row):
+                                        m += 1
+                            if (z != 2 and m==5) or (z == 2 and m==4):
+                                k += 1
+                            z += 1
+                        # Vertical
+                        z = 0
+                        while z < 5:
+                            m = 0
+                            number_list = []
+                            if z != 2:
+                                number_list.extend([UserBingoList[z], UserBingoList[z+5], UserBingoList[z+10], UserBingoList[z+15], UserBingoList[z+20]])
+                            else:
+                                number_list.extend([UserBingoList[z], UserBingoList[z+5], UserBingoList[z+15], UserBingoList[z+20]])
+                            for row in ListChain:
+                                for (n, i) in enumerate(number_list):
+                                    if str(i) == str(row):
+                                        m += 1
+                            if (z != 2 and m==5) or (z == 2 and m==4):
+                                k += 1
+                            z += 1
+                        # Diagonal 1
+                        m = 0
+                        number_list = []
+                        number_list.extend([UserBingoList[0], UserBingoList[6], UserBingoList[18], UserBingoList[24]])
+                        for row in ListChain:
+                            for (n, i) in enumerate(number_list):
+                                if str(i) == str(row):
+                                    m += 1
+                        # If matches 4 numbers, add k+
+                        if m == 4:
+                            k += 1
+                        m = 0  # reset m to 0
+                        # Diagonal 2
+                        number_list = []
+                        number_list.extend([UserBingoList[4], UserBingoList[8], UserBingoList[16], UserBingoList[20]])
+                        for row in ListChain:
+                            for (n, i) in enumerate(number_list):
+                                if str(i) == str(row):
+                                    m += 1
+                        # If matches 4 numbers, add k+
+                        if m == 4:
+                            k += 1
+                        if k >= 1:
+                            # print(k) ## this will return number of straight line vertical or horizontal
+                            return Type
+                        else:
+                            return k
+                    elif Type.upper() == 'DIAGONALS':
+                        # DIAGONALS: X lines 0, 4, 6, 8, 16,18 , 20, 24
+                        number_list = []
+                        k = 0
+                        UserBingoList = json.loads(result[1])
+                        number_list.extend([UserBingoList[0], UserBingoList[6], UserBingoList[18], UserBingoList[24]])
+                        number_list.extend([UserBingoList[4], UserBingoList[8], UserBingoList[16], UserBingoList[20]])
+                        j = 0
+                        for row in ListChain:
+                            for (n, i) in enumerate(number_list):
+                                if str(i) == str(row):
+                                    k += 1
+                        if k == 8:
+                            return Type
+                        else:
+                            return k
+                    elif Type.upper() == 'FULL HOUSE':
+                        # FULL HOUSE: all numbers in
+                        k = 0
+                        UserBingoList = json.loads(result[1])
+                        for row in ListChain:
+                            for n, i in enumerate(UserBingoList):
+                                if str(i) == str(row):
+                                    k += 1
+                        if k >= 24:
+                            return Type
+                        else:
+                            return k
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     return None
 
 
-def Bingo_LastBlock():
+async def KickUser(userID, GameID):
+    global pool
     try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT height, hash, active, first2_75, last2_75, sum_numbers, sum_75, gameID 
-                      FROM `bingo_active_blocks` ORDER BY height DESC LIMIT 1 """
-            cur.execute(sql,)
-            result = cur.fetchone()
-            return result
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ SELECT started, board_json, board_jsonStar, kicked, kicked_when, gameID 
+                          FROM `bingo_active_players` WHERE `discord_id`=%s AND `gameID`=%s LIMIT 1 """
+                await cur.execute(sql, (str(userID), GameID))
+                result = await cur.fetchone()
+                if result:
+                    try:
+                        current_Date = datetime.now()
+                        await openConnection()
+                        async with pool.acquire() as conn:
+                            async with conn.cursor() as cur:
+                                sql = """ UPDATE bingo_active_players SET `kicked`=%s,`kicked_when`=%s WHERE `discord_id`=%s AND `gameID`=%s """
+                                await cur.execute(sql, ('YES', str(current_Date), str(userID), str(GameID)))
+                                await conn.commit()
+                    except Exception as e:
+                        traceback.print_exc(file=sys.stdout) 
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
 
 
-def Bingo_CreateGame(startedBlock, discord_id, discord_name, gameType: str=None):
+async def List_bingo_active_players(GameID):
+    global pool
     try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT id, startedBlock, status, completed_when, winner_id, creator_discord_id, creator_discord_name, created_when 
-                      FROM `bingo_gamelist` WHERE status!='COMPLETED' LIMIT 1 """
-            cur.execute(sql,)
-            result = cur.fetchone()
-            if result is None:
-                # Let's insert starting block info
-                current_Date = datetime.now()
-                topBlock = gettopblock()
-                if startedBlock - 20 <= topBlock['height']:
-                    return None
-                else:
-                    if gameType is None:
-                        # randomType = random.choice(['FOUR CORNERS','LINE','DIAGONALS'])
-                        # if want to change random later
-                        randomType = 'ANY'
-                        sql = """ INSERT INTO bingo_gamelist (`startedBlock`, `status`, `gameType`, `creator_discord_id`, `creator_discord_name`, created_when) 
-                                  VALUES (%s, %s, %s, %s, %s, %s) """
-                        cur.execute(sql, (int(startedBlock), 'OPENED', randomType, discord_id, discord_name, current_Date))
-                        conn.commit()
-                    else:
-                        sql = """ INSERT INTO bingo_gamelist (`startedBlock`, `status`, `gameType`, `creator_discord_id`, `creator_discord_name`, created_when) 
-                                  VALUES (%s, %s, %s, %s, %s, %s) """
-                        cur.execute(sql, (int(startedBlock), 'OPENED', gameType, discord_id, discord_name, current_Date))
-                        conn.commit()
-                    # Return array of below. return block height oif created.
-                    sql = """ SELECT id, startedBlock, status, completed_when, winner_id, creator_discord_id, creator_discord_name, created_when, gameType 
-                              FROM `bingo_gamelist` ORDER BY id DESC LIMIT 1 """
-                    cur.execute(sql,)
-                    result = cur.fetchone()
-                    return result
-            else:
-                # Let's show result. return their status
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ SELECT discord_id, discord_name, started, board_json, board_jsonStar, kicked, kicked_when, gameID 
+                          FROM `bingo_active_players` WHERE `gameID`=%s """
+                await cur.execute(sql, GameID)
+                result = await cur.fetchall()
                 return result
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
 
 
-def Bingo_LastGame():
+
+async def Bingo_CreateGame(startedBlock, discord_id, discord_name, gameType: str=None):
+    global pool
     try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT id, startedBlock, status, completed_when, winner_id, gameType, reward, rewardTx, 
-                      rewardNotWin, creator_discord_id, creator_discord_name, created_when, remark 
-                      FROM `bingo_gamelist` ORDER BY id DESC LIMIT 1 """
-            cur.execute(sql,)
-            result = cur.fetchone()
-            return result
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ SELECT id, startedBlock, status, completed_when, winner_id, creator_discord_id, creator_discord_name, created_when 
+                          FROM `bingo_gamelist` WHERE status!='COMPLETED' LIMIT 1 """
+                await cur.execute(sql,)
+                result = await cur.fetchone()
+                if result is None:
+                    # Let's insert starting block info
+                    current_Date = datetime.now()
+                    topBlock = await gettopblock()
+                    if startedBlock - 20 <= topBlock['height']:
+                        return None
+                    else:
+                        if gameType is None:
+                            # randomType = random.choice(['FOUR CORNERS','LINE','DIAGONALS'])
+                            # if want to change random later
+                            randomType = 'ANY'
+                            sql = """ INSERT INTO bingo_gamelist (`startedBlock`, `status`, `gameType`, `creator_discord_id`, `creator_discord_name`, created_when) 
+                                      VALUES (%s, %s, %s, %s, %s, %s) """
+                            await cur.execute(sql, (int(startedBlock), 'OPENED', randomType, discord_id, discord_name, current_Date))
+                            await conn.commit()
+                        else:
+                            sql = """ INSERT INTO bingo_gamelist (`startedBlock`, `status`, `gameType`, `creator_discord_id`, `creator_discord_name`, created_when) 
+                                      VALUES (%s, %s, %s, %s, %s, %s) """
+                            await cur.execute(sql, (int(startedBlock), 'OPENED', gameType, discord_id, discord_name, current_Date))
+                            await conn.commit()
+                        # Return array of below. return block height oif created.
+                        sql = """ SELECT id, startedBlock, status, completed_when, winner_id, creator_discord_id, creator_discord_name, created_when, gameType 
+                                  FROM `bingo_gamelist` ORDER BY id DESC LIMIT 1 """
+                        await cur.execute(sql,)
+                        result = await cur.fetchone()
+                        return result
+                else:
+                    # Let's show result. return their status
+                    return result
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
 
 
-def Bingo_LastGameResult():
+async def Bingo_LastGame():
+    global pool
     try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT id, startedBlock, status, completed_when, winner_id, winner_name, claim_Atheight, gameType 
-                      FROM `bingo_gamelist` WHERE `status`='COMPLETED' ORDER BY id DESC LIMIT 1 """
-            cur.execute(sql,)
-            result = cur.fetchone()
-            return result
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ SELECT id, startedBlock, status, completed_when, winner_id, gameType, reward, rewardTx, 
+                          rewardNotWin, creator_discord_id, creator_discord_name, created_when, remark 
+                          FROM `bingo_gamelist` ORDER BY id DESC LIMIT 1 """
+                await cur.execute(sql,)
+                result = await cur.fetchone()
+                return result
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
 
 
-def Bingo_LastGameResultList():
+async def Bingo_LastGameResult():
+    global pool
     try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT id, startedBlock, status, completed_when, winner_id, winner_name, claim_Atheight, gameType 
-                      FROM `bingo_gamelist` WHERE `status`='COMPLETED' ORDER BY id DESC LIMIT 5 """
-            cur.execute(sql,)
-            result = cur.fetchall()
-            if result:
-                return [[row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]] for row in result]
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ SELECT id, startedBlock, status, completed_when, winner_id, winner_name, claim_Atheight, gameType 
+                          FROM `bingo_gamelist` WHERE `status`='COMPLETED' ORDER BY id DESC LIMIT 1 """
+                await cur.execute(sql,)
+                result = await cur.fetchone()
+                return result
+    except Exception as e:
+        traceback.print_exc(file=sys.stdout)
+
+
+async def Bingo_LastGameResultList():
+    global pool
+    try:
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ SELECT id, startedBlock, status, completed_when, winner_id, winner_name, claim_Atheight, gameType 
+                          FROM `bingo_gamelist` WHERE `status`='COMPLETED' ORDER BY id DESC LIMIT 5 """
+                await cur.execute(sql,)
+                result = await cur.fetchall()
+                if result:
+                    return [[row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]] for row in result]
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     return None
 
 
-def Bingo_ShowBallNumber(height):
+async def Bingo_ShowBallNumber(height):
+    global pool_chain
     # Get from blockchain
     card = ''
     try:
-        openConnectionBlockchain()
-        with connBlockchain.cursor() as curBlockchain:
-            sql = """ SELECT `height`, `hash`, `difficulty`,`timestamp` 
-                      FROM blocks where height=%s ORDER BY height LIMIT 1 """
-            curBlockchain.execute(sql, (height))
-            row = curBlockchain.fetchone()
-            if row:
-                sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
-                card = str('__Height__: '+ str('{:,.0f}'.format(row['height'])) + ' Ball number: '+str(sum_75))
-            else:
-                card = str('No ball at that height. __'+str('{:,.0f}'.format(height))+'__')
-            return card
+        await openConnectionBlockchain()
+        async with pool_chain.acquire() as connBlockchain:
+            async with connBlockchain.cursor() as curBlockchain:
+                sql = """ SELECT `height`, `hash`, `difficulty`,`timestamp` 
+                          FROM blocks where height=%s ORDER BY height LIMIT 1 """
+                await curBlockchain.execute(sql, (height))
+                row = await curBlockchain.fetchone()
+                if row:
+                    sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
+                    card = str('__Height__: '+ str('{:,.0f}'.format(row['height'])) + ' Ball number: '+str(sum_75))
+                else:
+                    card = str('No ball at that height. __'+str('{:,.0f}'.format(height))+'__')
+                return card
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     # End of getting from blockchain	
 
 
-def Bingo_ShowCards(lastCardNum, gameID):
-    GameStart = Bingo_LastGame()
+async def Bingo_ShowCards(lastCardNum, gameID):
+    global pool_chain
+    GameStart = await Bingo_LastGame()
     if GameStart[2].upper() == 'COMPLETED':
         return None
     else:
         gameID = GameStart[0]
     # Get from blockchain
     try:
-        openConnectionBlockchain()
-        with connBlockchain.cursor() as curBlockchain:
-            sql = """ SELECT `height`, `hash`, `difficulty`,`timestamp` 
-                      FROM blocks where height > %s ORDER BY height DESC """
-            curBlockchain.execute(sql, (GameStart[1]))
-            rows = curBlockchain.fetchall()
-            card = []
-            listNumberHashes = []
-            i = 0
-            for row in rows:
-                sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
-                if (sum_75 not in listNumberHashes):
-                    card.append('__Height__: '+ str('{:,.0f}'.format(row['height'])) + ' Ball number: '+str(sum_75))
-                    listNumberHashes.append(sum_75)
-                else:
-                    card.append('__Height__: '+ str('{:,.0f}'.format(row['height'])) + ' `Ball number: '+str(sum_75)+'`')
-                i += 1
-                if i >= int(lastCardNum):
-                    return card
-            return card
+        await openConnectionBlockchain()
+        async with pool_chain.acquire() as connBlockchain:
+            async with connBlockchain.cursor() as curBlockchain:
+                sql = """ SELECT `height`, `hash`, `difficulty`,`timestamp` 
+                          FROM blocks where height > %s ORDER BY height DESC """
+                await curBlockchain.execute(sql, (GameStart[1]))
+                rows = await curBlockchain.fetchall()
+                card = []
+                listNumberHashes = []
+                i = 0
+                for row in rows:
+                    sum_75 = int(sumOfDigits(str(row['hash'])) % 75) + 1
+                    if (sum_75 not in listNumberHashes):
+                        card.append('__Height__: '+ str('{:,.0f}'.format(row['height'])) + ' Ball number: '+str(sum_75))
+                        listNumberHashes.append(sum_75)
+                    else:
+                        card.append('__Height__: '+ str('{:,.0f}'.format(row['height'])) + ' `Ball number: '+str(sum_75)+'`')
+                    i += 1
+                    if i >= int(lastCardNum):
+                        return card
+                return card
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
     # End of getting from blockchain	
 
 
-def Bingo_StartNow():
-    try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ SELECT height, hash, active, first2_75, last2_75, sum_numbers 
-                      FROM `bingo_active_blocks` ORDER BY height ASC LIMIT 1 """
-            cur.execute(sql,)
-            result = cur.fetchone()
-            if result is None:
-                # Let's insert starting block info
-                current_Date = datetime.now()
-                topBlock = gettopblock()
-                first2 = int(topBlock['hash'][:2], 16)
-                last2 = int(topBlock['hash'][-2:], 16) #last two
-                sum_75 = int(sumOfDigits(str(topBlock['hash'])) % 75) + 1
-                if 1 < last2 <= 225:
-                    last2 = int(last2 % 75) + 1
-                if 1 < first2 <= 225:
-                    first2 = int(first2 % 75) + 1
-                sql = """ INSERT INTO bingo_active_blocks (`height`, `hash`, `active`, `first2_75`, `last2_75`, `sum_numbers`, `sum_75`) 
-                          VALUES (%s, %s, %s, %s, %s, %s, %s) """
-                cur.execute(sql, (str(topBlock['height']), str(topBlock['hash']), current_Date, first2, last2, sumOfDigits(str(topBlock['hash'])), sum_75))
-                conn.commit()
-                # Return array of below
-                return [topBlock['height'], topBlock['hash'], current_Date, first2, last2]
-            else:
-                return result
-    except Exception as e:
-        traceback.print_exc(file=sys.stdout)
-
-
-def Bingo_Extend(gameID: int, topBlock: int):
+async def Bingo_Extend(gameID: int, topBlock: int):
+    global pool
     newBlock = str(topBlock + BLOCK_MIN_PLAYER)
     try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ UPDATE bingo_gamelist SET startedBlock="""+newBlock+""" WHERE `id`=%s """
-            cur.execute(sql, gameID)
-            conn.commit()
-            sql = """ UPDATE bingo_gamelist SET reward=reward+"""+str(INCREASE_REWARD)+""" WHERE `id`=%s """
-            cur.execute(sql, gameID)
-            conn.commit()
-            sql = """ UPDATE bingo_gamelist SET rewardNotWin=rewardNotWin+"""+str(INCREASE_PLAYREWARD)+""" WHERE `id`=%s """
-            cur.execute(sql, gameID)
-            conn.commit()
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ UPDATE bingo_gamelist SET startedBlock="""+newBlock+""" WHERE `id`=%s """
+                await cur.execute(sql, gameID)
+                await conn.commit()
+                sql = """ UPDATE bingo_gamelist SET reward=reward+"""+str(INCREASE_REWARD)+""" WHERE `id`=%s """
+                await cur.execute(sql, gameID)
+                await conn.commit()
+                sql = """ UPDATE bingo_gamelist SET rewardNotWin=rewardNotWin+"""+str(INCREASE_PLAYREWARD)+""" WHERE `id`=%s """
+                await cur.execute(sql, gameID)
+                await conn.commit()
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
 
 
-def Bingo_ChangeStatusGame(gameID: int, status: str):
-    global conn
+async def Bingo_ChangeStatusGame(gameID: int, status: str):
+    global pool
     if status not in ["COMPLETED", "OPENED", "ONGOING"]:
         return None
     try:
-        openConnection()
-        with conn.cursor() as cur:
-            sql = """ UPDATE bingo_gamelist SET `status`=%s WHERE `id`=%s """
-            cur.execute(sql, (status.upper(), int(gameID)))
-            conn.commit()
+        await openConnection()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                sql = """ UPDATE bingo_gamelist SET `status`=%s WHERE `id`=%s """
+                await cur.execute(sql, (status.upper(), int(gameID)))
+                await conn.commit()
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
 
@@ -720,7 +675,7 @@ async def board(ctx, *args):
     else:
         await ctx.channel.send('This command only available via DM or through <#'+str(channelID)+'>')
         return
-    GameStart = Bingo_LastGame()
+    GameStart = await Bingo_LastGame()
     em = discord.Embed(title=f'Your Bingo Board: {ctx.author.name}', description='Play Bingo at WrkzCoin Discord #'+'{:,.0f}'.format(GameStart[0])+' Type: ***'+str(GameStart[5])+'***', timestamp=datetime.utcnow(), color=0xDEADBF)
     em.set_author(name='BingoBot', icon_url=bot.user.default_avatar_url)
 
@@ -729,7 +684,7 @@ async def board(ctx, *args):
         return
     if GameStart[2].upper() == 'ONGOING':
         try:
-            board = CheckUserBoard(ctx.author.id, GameStart[0])
+            board = await CheckUserBoard(ctx.author.id, GameStart[0])
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
         if board is None:
@@ -772,10 +727,10 @@ async def board(ctx, *args):
         em.add_field(name="OTHER LINKS", value="{} / {} / {}".format("[Use TipBot?](http://invite.discord.bot.tips)", "[Support Server](https://discord.com/invite/GpHzURM)", "[TipBot Github](https://github.com/wrkzcoin/TipBot)"), inline=False)
         if GameStart[12]:
             em.add_field(name="Remark", value=GameStart[12], inline=False)
-        topBlock = gettopblock()
+        topBlock = await gettopblock()
 
         em.set_footer(text="Started at height "+str('{:,.0f}'.format(GameStart[1]))+" | Current Height: "+str('{:,.0f}'.format(topBlock['height'])))
-        ListActivePlayer = List_bingo_active_players(GameStart[0])
+        ListActivePlayer = await List_bingo_active_players(GameStart[0])
 
         if len(ListActivePlayer) < 20:
             try:
@@ -801,8 +756,8 @@ async def board(ctx, *args):
         return
     elif GameStart[2].upper() == 'OPENED':
         # Avoid game still OPENED.
-        ListActivePlayer = List_bingo_active_players(GameStart[0])
-        topBlock = gettopblock()
+        ListActivePlayer = await List_bingo_active_players(GameStart[0])
+        topBlock = await gettopblock()
         RemainHeight = int(GameStart[1]) - int(topBlock['height'])
         # to avoid some bug game hasn't started
         if int(RemainHeight) <= 0:
@@ -812,7 +767,7 @@ async def board(ctx, *args):
             for (i, item) in enumerate(ListActivePlayer):
                 ListMention = ListMention + '<@'+str(item[0])+'>'+' '
             if len(ListActivePlayer) >= MIN_PLAYER:
-                Bingo_ChangeStatusGame(GameStart[0], "ONGOING")
+                await Bingo_ChangeStatusGame(GameStart[0], "ONGOING")
                 await botChan.send(f'{ListMention}\nGame started. `.board` registration is closed. Good luck!')
                 return
             else:
@@ -822,13 +777,13 @@ async def board(ctx, *args):
                                        'blocks for new players.\n'
                                        f'Reward increased by: {INCREASE_REWARD}WRKZ '
                                        f'and played reward by: {INCREASE_PLAYREWARD}WRKZ')
-                    Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
+                    await Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
 
-        board = CheckUser(str(ctx.author.id), ctx.message.author.name, GameStart[0])
-        ListActivePlayer = List_bingo_active_players(GameStart[0])
-        board = CheckUserBoard(ctx.author.id, GameStart[0])
+        board = await CheckUser(str(ctx.author.id), ctx.message.author.name, GameStart[0])
+        ListActivePlayer = await List_bingo_active_players(GameStart[0])
+        board = await CheckUserBoard(ctx.author.id, GameStart[0])
         em.add_field(name="-", value=f"{15*EMPTY_DISPLAY}\n"+ f"{2*EMPTY_DISPLAY}:regional_indicator_w::regional_indicator_r::regional_indicator_k::regional_indicator_z:{2*EMPTY_DISPLAY}"
             f":regional_indicator_b::regional_indicator_i::regional_indicator_n::regional_indicator_g::regional_indicator_o:{2*EMPTY_DISPLAY}\n" + f"{15*EMPTY_DISPLAY}\n", inline=False)
         LineEm = ''
@@ -866,7 +821,7 @@ async def board(ctx, *args):
         if GameStart[12]:
             em.add_field(name="Remark", value=GameStart[12], inline=False)
 
-        topBlock = gettopblock()
+        topBlock = await gettopblock()
         em.set_footer(text="Will start at height "+str('{:,.0f}'.format(GameStart[1]))+" | Current Height: "+str('{:,.0f}'.format(topBlock['height'])))
 
         if len(ListActivePlayer) < 20:
@@ -902,13 +857,13 @@ async def card(ctx, *args):
     else:
         await ctx.send(f'{ctx.author.mention}, This command only available via DM or through <#'+str(channelID)+'>')
         return
-    GameStart = Bingo_LastGame()
+    GameStart = await Bingo_LastGame()
 
     if GameStart is None:
         await ctx.send('There is no game opened yet.')
         return
     if GameStart[2].upper() == 'ONGOING':
-        board = CheckUserBoard(ctx.author.id, GameStart[0])
+        board = await CheckUserBoard(ctx.author.id, GameStart[0])
         if board is None:
             await ctx.send(f'{ctx.author.mention}, Game is already on going. Please wait for a new one.')
             return
@@ -917,7 +872,7 @@ async def card(ctx, *args):
             if GameStart[12]:
                 boardOutput = boardOutput + '\n' + '*Remark*: '+str(GameStart[12])
 
-            ListActivePlayer = List_bingo_active_players(GameStart[0])
+            ListActivePlayer = await List_bingo_active_players(GameStart[0])
             if len(ListActivePlayer) < 20:
                 await ctx.send(str(ctx.message.author.name)+': Your created board for game *#'+str(GameStart[0])+'* TYPE: ***'+str(GameStart[5])+'***\n'+boardOutput)
             else:
@@ -930,8 +885,8 @@ async def card(ctx, *args):
         return
     elif GameStart[2].upper() == 'OPENED':
         # Avoid game still OPENED.
-        ListActivePlayer = List_bingo_active_players(GameStart[0])
-        topBlock = gettopblock()
+        ListActivePlayer = await List_bingo_active_players(GameStart[0])
+        topBlock = await gettopblock()
         RemainHeight = int(GameStart[1]) - int(topBlock['height'])
         # to avoid some bug game hasn't started
         if int(RemainHeight) <= 0:
@@ -941,7 +896,7 @@ async def card(ctx, *args):
             for (i, item) in enumerate(ListActivePlayer):
                 ListMention = ListMention + '<@'+str(item[0])+'>'+' '
             if len(ListActivePlayer)>= MIN_PLAYER:
-                Bingo_ChangeStatusGame(GameStart[0], "ONGOING")
+                await Bingo_ChangeStatusGame(GameStart[0], "ONGOING")
                 await botChan.send(f'{ListMention}\n Game started. `.board` registration is closed. Good luck!')
                 return
             else:
@@ -951,15 +906,15 @@ async def card(ctx, *args):
                                        'blocks for new players.\n'
                                        f'Reward increased by: {INCREASE_REWARD}WRKZ '
                                        f'and played reward by: {INCREASE_PLAYREWARD}WRKZ')
-                    Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
+                    await Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
 
-        board = CheckUser(str(ctx.author.id), ctx.message.author.name, GameStart[0])
+        board = await CheckUser(str(ctx.author.id), ctx.message.author.name, GameStart[0])
         boardOutput = '`' + boardDump(smallWords(board, 6), 6) + '`'
         if GameStart[12]:
             boardOutput = boardOutput + '\n' + '*Remark*: '+str(GameStart[12])
-        ListActivePlayer = List_bingo_active_players(GameStart[0])
+        ListActivePlayer = await List_bingo_active_players(GameStart[0])
         if len(ListActivePlayer) < 20:
             await ctx.send(str(ctx.message.author.name)+': Your board for game #'+str(GameStart[0])+' TYPE: ***'+str(GameStart[5])+'***\n'+boardOutput)
         else:
@@ -977,19 +932,19 @@ async def ball(ctx, *args):
         await ctx.send(f'{ctx.author.mention}, This command only available via DM or through <#'+str(channelID)+'>')
         return
     ArgQ = (' '.join(args)).split()
-    GameStart = Bingo_LastGame()
+    GameStart = await Bingo_LastGame()
     if len(ArgQ) == 1:
         # If there is one argument like .ball height
         try:
             height = int(ArgQ[0])
-            ballNum = Bingo_ShowBallNumber(height)
+            ballNum = await Bingo_ShowBallNumber(height)
             await ctx.send(ballNum)
             return
         except ValueError:
             await ctx.send(f'{ctx.author.mention}, Ball height must be integer.')
             return
     else:
-        cards = Bingo_ShowCards(8, GameStart[0])
+        cards = await Bingo_ShowCards(8, GameStart[0])
         if GameStart[2].upper() != 'ONGOING':
             await ctx.send(f'{ctx.author.mention}, Game has not started yet.')
             return	
@@ -1006,9 +961,9 @@ async def ball(ctx, *args):
 
 @bot.command(pass_context=True, name='bingo', aliases=['bing'], help=bot_help_bingo)
 async def bingo(ctx, *args):
-    global maintainerOwner, channelID, BINGO_ALERT_BLOCKS
+    global maintainerOwner, channelID, BINGO_ALERT_BLOCKS, pool
     botChan = bot.get_channel(int(channelID))
-    topBlock = gettopblock()
+    topBlock = await gettopblock()
     # If private DM, OK pass
     if isinstance(ctx.channel, discord.DMChannel) or ctx.channel.id == channelID:
         pass
@@ -1017,7 +972,7 @@ async def bingo(ctx, *args):
         return
 
     ArgQ = (' '.join(args)).split()
-    GameStart = Bingo_LastGame()
+    GameStart = await Bingo_LastGame()
     if len(ArgQ) == 0:
         # If no argument .bingo
         BingoMSG = ''
@@ -1027,7 +982,7 @@ async def bingo(ctx, *args):
         else:
             PassedBlocks = int(topBlock['height']) - int(GameStart[1])
             # If there is any game.
-            ListActivePlayer = List_bingo_active_players(GameStart[0])
+            ListActivePlayer = await List_bingo_active_players(GameStart[0])
             names = ''
             mentions = ''
             names_kick = ''
@@ -1062,7 +1017,7 @@ async def bingo(ctx, *args):
                     for (i, item) in enumerate(ListActivePlayer):
                         ListMention = ListMention + '<@'+str(item[0])+'>'+' '
                     if len(ListActivePlayer) >= MIN_PLAYER:
-                        Bingo_ChangeStatusGame(GameStart[0], "ONGOING")
+                        await Bingo_ChangeStatusGame(GameStart[0], "ONGOING")
                         await botChan.send(f'{ListMention}\nGame started. `.board` registration is closed. Good luck!')
                         return
                     else:
@@ -1072,7 +1027,7 @@ async def bingo(ctx, *args):
                                                'blocks for new players.\n'
                                                f'Reward increased by: {INCREASE_REWARD}WRKZ '
                                                f'and played reward by: {INCREASE_PLAYREWARD}WRKZ')
-                            Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
+                            await Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
                         except Exception as e:
                             traceback.print_exc(file=sys.stdout)
                 BingoMSG += 'Game will start at height: `'+str('{:,.0f}'.format(GameStart[1]))+'`. Remaining `' +str(RemainHeight) +'` block(s) more.\n'
@@ -1114,23 +1069,24 @@ async def bingo(ctx, *args):
             # OK let's OFF and ON
             remindMsg = ''
             try:
-                openConnection()
-                with conn.cursor() as cur:
-                    sql = """ SELECT `discord_id`, `discord_name` FROM `bingo_reminder` WHERE `discord_id`=%s """
-                    cur.execute(sql, (str(ctx.author.id)))
-                    result = cur.fetchone()
-                    if result is None:
-                        # Insert to remind
-                        sql = """ INSERT INTO bingo_reminder (`discord_id`, `discord_name`) VALUES (%s, %s) """
-                        cur.execute(sql, (str(ctx.author.id), str(ctx.message.author.name)))
-                        conn.commit()
-                        remindMsg = 'You have toggle to get __alert__ from bot when game opened.'
-                    else:
-                        # Insert to remind
-                        sql = """ DELETE FROM bingo_reminder WHERE `discord_id`=%s """
-                        cur.execute(sql, (str(ctx.author.id)))
-                        conn.commit()
-                        remindMsg = 'You will __not__ getting an alert from bot when game opened. `.bingo remind` again to enable.'
+                await openConnection()
+                async with pool.acquire() as conn:
+                    async with conn.cursor() as cur:
+                        sql = """ SELECT `discord_id`, `discord_name` FROM `bingo_reminder` WHERE `discord_id`=%s """
+                        await cur.execute(sql, (str(ctx.author.id)))
+                        result = await cur.fetchone()
+                        if result is None:
+                            # Insert to remind
+                            sql = """ INSERT INTO bingo_reminder (`discord_id`, `discord_name`) VALUES (%s, %s) """
+                            await cur.execute(sql, (str(ctx.author.id), str(ctx.message.author.name)))
+                            await conn.commit()
+                            remindMsg = 'You have toggle to get __alert__ from bot when game opened.'
+                        else:
+                            # Insert to remind
+                            sql = """ DELETE FROM bingo_reminder WHERE `discord_id`=%s """
+                            await cur.execute(sql, (str(ctx.author.id)))
+                            await conn.commit()
+                            remindMsg = 'You will __not__ getting an alert from bot when game opened. `.bingo remind` again to enable.'
             except Exception as e:
                 traceback.print_exc(file=sys.stdout)
 
@@ -1140,8 +1096,8 @@ async def bingo(ctx, *args):
             if GameStart[2].upper() == 'ONGOING' or GameStart[2].upper() == 'OPENED':
                 await ctx.send('Game is already ONGOING or OPENED. Type `.bingo` for more info.')
                 return                
-            topBlock = gettopblock()
-            bingoStarted = Bingo_CreateGame(int(topBlock['height'])+BINGO_STARTAT, ctx.author.id, ctx.message.author.name)
+            topBlock = await gettopblock()
+            bingoStarted = await Bingo_CreateGame(int(topBlock['height'])+BINGO_STARTAT, ctx.author.id, ctx.message.author.name)
             if bingoStarted is None:
                 await ctx.send(f'{ctx.author.mention}, Internal error during creating game.')
                 return
@@ -1153,17 +1109,18 @@ async def bingo(ctx, *args):
                 remindMsg = 'Game created. ID: #'+'{:,.0f}'.format(bingoStarted[0])+' at height: '+'{:,.0f}'.format(bingoStarted[1])+'. TYPE: '+bingoStarted[8]+'\n'
 
                 # let's create straightaway to game starter
-                board = CheckUser(str(ctx.author.id), ctx.message.author.name, bingoStarted[0])
+                board = await CheckUser(str(ctx.author.id), ctx.message.author.name, bingoStarted[0])
                 boardOutput = '`' + boardDump(smallWords(board, 6), 6) + '`'
                 # let's post his board straightaway
 
                 result = None
                 try:
-                    openConnection()
-                    with conn.cursor() as cur:
-                        sql = """ SELECT `discord_id`, `discord_name` FROM `bingo_reminder` """
-                        cur.execute(sql,)
-                        result = cur.fetchall()
+                    await openConnection()
+                    async with pool.acquire() as conn:
+                        async with conn.cursor() as cur:
+                            sql = """ SELECT `discord_id`, `discord_name` FROM `bingo_reminder` """
+                            await cur.execute(sql,)
+                            result = await cur.fetchall()
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
 
@@ -1216,11 +1173,12 @@ async def bingo(ctx, *args):
                         else:
                             gameType = 'ANY'
                         try:
-                            openConnection()
-                            with conn.cursor() as cur:
-                                sql = """ UPDATE bingo_gamelist SET `gameType`=%s WHERE `id`=%s """
-                                cur.execute(sql, (gameType, GameStart[0]))
-                                conn.commit()
+                            await openConnection()
+                            async with pool.acquire() as conn:
+                                async with conn.cursor() as cur:
+                                    sql = """ UPDATE bingo_gamelist SET `gameType`=%s WHERE `id`=%s """
+                                    await cur.execute(sql, (gameType, GameStart[0]))
+                                    await conn.commit()
                         except Exception as e:
                             traceback.print_exc(file=sys.stdout)
 
@@ -1248,11 +1206,12 @@ async def bingo(ctx, *args):
                             await ctx.author.send('Reward price is too big.')
                             return
                         try:
-                            openConnection()
-                            with conn.cursor() as cur:
-                                sql = """ UPDATE bingo_gamelist SET `reward`=%s WHERE `id`=%s """
-                                cur.execute(sql, (RewardPrice, GameStart[0]))
-                                conn.commit()
+                            await openConnection()
+                            async with pool.acquire() as conn:
+                                async with conn.cursor() as cur:
+                                    sql = """ UPDATE bingo_gamelist SET `reward`=%s WHERE `id`=%s """
+                                    await cur.execute(sql, (RewardPrice, GameStart[0]))
+                                    await conn.commit()
                         except Exception as e:
                             traceback.print_exc(file=sys.stdout)
 
@@ -1280,11 +1239,12 @@ async def bingo(ctx, *args):
                             await ctx.author.send('Reward non-win price is too big.')
                             return
                         try:
-                            openConnection()
-                            with conn.cursor() as cur:
-                                sql = """ UPDATE bingo_gamelist SET `rewardNotWin`=%s WHERE `id`=%s """
-                                cur.execute(sql, (RewardPrice, GameStart[0]))
-                                conn.commit()
+                            await openConnection()
+                            async with pool.acquire() as conn:
+                                async with conn.cursor() as cur:
+                                    sql = """ UPDATE bingo_gamelist SET `rewardNotWin`=%s WHERE `id`=%s """
+                                    await cur.execute(sql, (RewardPrice, GameStart[0]))
+                                    await conn.commit()
                         except Exception as e:
                             traceback.print_exc(file=sys.stdout)
 
@@ -1308,7 +1268,7 @@ async def bingo(ctx, *args):
                     return
                 # Check user card with blocks hash
                 elif GameStart[2] == 'ONGOING':
-                    board = CheckUserBoard(ctx.author.id, GameStart[0])
+                    board = await CheckUserBoard(ctx.author.id, GameStart[0])
                     # If no board, reply user.
                     if board is None:
                         await ctx.send(f'{ctx.author.mention}, You are late. Game is already ongoing. Please wait for a new one.')
@@ -1317,27 +1277,27 @@ async def bingo(ctx, *args):
                     if str(GameStart[5])=='ANY':
                         # ANY GAME:
                         try:
-                            UserBingo1 = CheckUserBingoType(ctx.author.id, GameStart[0], 'FOUR CORNERS')
+                            UserBingo1 = await CheckUserBingoType(ctx.author.id, GameStart[0], 'FOUR CORNERS')
                             if str(UserBingo1) == 'FOUR CORNERS':
                                 UserBingo = 'ANY'
-                            UserBingo2 = CheckUserBingoType(ctx.author.id, GameStart[0], 'LINE')
+                            UserBingo2 = await CheckUserBingoType(ctx.author.id, GameStart[0], 'LINE')
                             if str(UserBingo2) == 'LINE':
                                 UserBingo = 'ANY'
-                            UserBingo3 = CheckUserBingoType(ctx.author.id, GameStart[0], 'DIAGONALS')
+                            UserBingo3 = await CheckUserBingoType(ctx.author.id, GameStart[0], 'DIAGONALS')
                             if str(UserBingo3) == 'DIAGONALS':
                                 UserBingo = 'ANY'
-                            UserBingo4 = CheckUserBingoType(ctx.author.id, GameStart[0], 'FULL HOUSE')
+                            UserBingo4 = await CheckUserBingoType(ctx.author.id, GameStart[0], 'FULL HOUSE')
                             if str(UserBingo4) == 'FULL HOUSE':
                                 UserBingo = 'ANY'
                         except:
                             pass
                     else:
                         try:
-                            UserBingo = CheckUserBingoType(ctx.author.id, GameStart[0], str(GameStart[5]))
+                            UserBingo = await CheckUserBingoType(ctx.author.id, GameStart[0], str(GameStart[5]))
                         except:
                             pass
                 if UserBingo is None:
-                    KickUser(ctx.author.id, GameStart[0])
+                    await KickUser(ctx.author.id, GameStart[0])
                     await ctx.send(f'{ctx.author.mention}, Did you check? No BINGO yet!! You\'re out from the game now.')
                     await botChan.send(str(ctx.message.author.name)+' was kicked from .bingo in DM.')						
                     return
@@ -1346,7 +1306,7 @@ async def bingo(ctx, *args):
                         ListMentions = ''
                         # Tip player (not winner)
                         if int(GameStart[8]) > 1:
-                            ListActivePlayer = List_bingo_active_players(GameStart[0])
+                            ListActivePlayer = await List_bingo_active_players(GameStart[0])
                             if ListActivePlayer:
                                 for (i, item) in enumerate(ListActivePlayer):
                                     if int(item[0]) != ctx.author.id:
@@ -1354,30 +1314,32 @@ async def bingo(ctx, *args):
                                 rewardNotWin = '.tip '+str(GameStart[8]) + ' ' + ListMentions + 'Thank you for playing.'
                         try:
                             current_Date = datetime.now()
-                            topBlock = gettopblock()
-                            openConnection()
-                            with conn.cursor() as cur:
-                                sql = """ UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, `claim_Atheight`=%s WHERE `id`=%s """
-                                cur.execute(sql, ('COMPLETED', str(current_Date), str(ctx.author.id), str(ctx.message.author.name), str(topBlock['height']), str(GameStart[0])))
-                                conn.commit()
+                            topBlock = await gettopblock()
+                            await openConnection()
+                            async with pool.acquire() as conn:
+                                async with conn.cursor() as cur:
+                                    sql = """ UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, `claim_Atheight`=%s WHERE `id`=%s """
+                                    await cur.execute(sql, ('COMPLETED', str(current_Date), str(ctx.author.id), str(ctx.message.author.name), str(topBlock['height']), str(GameStart[0])))
+                                    await conn.commit()
                         except Exception as e:
                             traceback.print_exc(file=sys.stdout)
 
                         try:
-                            openConnection()
-                            with conn.cursor() as cur:
-                                sql = """ INSERT INTO bingo_active_players_archive SELECT * FROM bingo_active_players; """
-                                cur.execute(sql,)
-                                conn.commit()
-                                sql = """ INSERT INTO bingo_active_blocks_archive SELECT * FROM bingo_active_blocks; """
-                                cur.execute(sql,)
-                                conn.commit()
-                                sql = """ TRUNCATE TABLE bingo_active_players; """
-                                cur.execute(sql,)
-                                conn.commit()
-                                sql = """ TRUNCATE TABLE bingo_active_blocks; """
-                                cur.execute(sql,)
-                                conn.commit()
+                            await openConnection()
+                            async with pool.acquire() as conn:
+                                async with conn.cursor() as cur:
+                                    sql = """ INSERT INTO bingo_active_players_archive SELECT * FROM bingo_active_players; """
+                                    await cur.execute(sql,)
+                                    await conn.commit()
+                                    sql = """ INSERT INTO bingo_active_blocks_archive SELECT * FROM bingo_active_blocks; """
+                                    await cur.execute(sql,)
+                                    await conn.commit()
+                                    sql = """ TRUNCATE TABLE bingo_active_players; """
+                                    await cur.execute(sql,)
+                                    await conn.commit()
+                                    sql = """ TRUNCATE TABLE bingo_active_blocks; """
+                                    await cur.execute(sql,)
+                                    await conn.commit()
                         except Exception as e:
                             traceback.print_exc(file=sys.stdout)
 
@@ -1392,7 +1354,7 @@ async def bingo(ctx, *args):
                             await botChan.send(f'{rewardNotWin}')
                         return
                     else:
-                        KickUser(ctx.author.id, GameStart[0])
+                        await KickUser(ctx.author.id, GameStart[0])
                         await botChan.send('<@'+str(ctx.author.id)+'>! Did you check? No BINGO yet!! You\'re out from the game now.')
                         return
         elif ArgQ[0].upper() == 'BALL':  
@@ -1405,7 +1367,7 @@ async def bingo(ctx, *args):
                 if GameStart[2] != 'ONGOING':
                     await ctx.send(f'{ctx.author.mention}, Game not started yet. It is sill opened for new players.')
                     return
-                cards = Bingo_ShowCards(1, GameStart[0])
+                cards = await Bingo_ShowCards(1, GameStart[0])
                 if cards:
                     cardMsg = ''
                     for i in range(len(cards)):
@@ -1429,7 +1391,7 @@ async def bingo(ctx, *args):
                 if GameStart[2].upper() != 'ONGOING':
                     await ctx.send(f'{ctx.author.mention}, Game not started yet. It is sill opened for new players.')
                     return
-                cards = Bingo_ShowCards(10, GameStart[0])
+                cards = await Bingo_ShowCards(10, GameStart[0])
                 if cards:
                     cardMsg = ''
                     for i in range(len(cards)):
@@ -1445,7 +1407,7 @@ async def bingo(ctx, *args):
                     return
         elif ArgQ[0].upper() == 'LASTGAME' or ArgQ[0].upper() == 'LAST':  
             # .bingo lastgame. show last game result
-            LastGameRes = Bingo_LastGameResult()
+            LastGameRes = await Bingo_LastGameResult()
             if LastGameRes is None:
                 await ctx.send(f'{ctx.author.mention}, There is no last game result yet.')
                 return
@@ -1463,7 +1425,7 @@ async def bingo(ctx, *args):
                 return
         elif ArgQ[0].upper() == 'LASTGAMES':  
             # .bingo lastgame. show last game result
-            LastGameRes = Bingo_LastGameResultList()
+            LastGameRes = await Bingo_LastGameResultList()
             if LastGameRes is None:
                 await ctx.send(f'{ctx.author.mention}, There is no last game result yet.')
                 return
@@ -1500,7 +1462,7 @@ async def bingo(ctx, *args):
                     ListMentions = ''
                     # Tip player (not winner)
                     if int(GameStart[8]) > 1:
-                        ListActivePlayer = List_bingo_active_players(GameStart[0])
+                        ListActivePlayer = await List_bingo_active_players(GameStart[0])
                         if ListActivePlayer:
                             for (i, item) in enumerate(ListActivePlayer):
                                 if int(item[0]) != bot.user.id:
@@ -1508,29 +1470,31 @@ async def bingo(ctx, *args):
                             rewardNotWin = '.tip '+str(GameStart[8]) + ' ' + ListMentions + 'Thank you for playing.'
                     try:
                         current_Date = datetime.now()
-                        topBlock = gettopblock()
-                        openConnection()
-                        with conn.cursor() as cur:
-                            sql = """ UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, `claim_Atheight`=%s WHERE `id`=%s """
-                            cur.execute(sql, ('COMPLETED', str(current_Date), str(bot.user.id), str(bot.user.name), str(topBlock['height']), str(GameStart[0])))
-                            conn.commit()
+                        topBlock = await gettopblock()
+                        await openConnection()
+                        async with pool.acquire() as conn:
+                            async with conn.cursor() as cur:
+                                sql = """ UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, `claim_Atheight`=%s WHERE `id`=%s """
+                                await cur.execute(sql, ('COMPLETED', str(current_Date), str(bot.user.id), str(bot.user.name), str(topBlock['height']), str(GameStart[0])))
+                                await conn.commit()
                     except Exception as e:
                         traceback.print_exc(file=sys.stdout)
                     try:
-                        openConnection()
-                        with conn.cursor() as cur:
-                            sql = """ INSERT INTO bingo_active_players_archive SELECT * FROM bingo_active_players; """
-                            cur.execute(sql,)
-                            conn.commit()
-                            sql = """ INSERT INTO bingo_active_blocks_archive SELECT * FROM bingo_active_blocks; """
-                            cur.execute(sql,)
-                            conn.commit()
-                            sql = """ TRUNCATE TABLE bingo_active_players; """
-                            cur.execute(sql,)
-                            conn.commit()
-                            sql = """ TRUNCATE TABLE bingo_active_blocks; """
-                            cur.execute(sql,)
-                            conn.commit()
+                        await openConnection()
+                        async with pool.acquire() as conn:
+                            async with conn.cursor() as cur:
+                                sql = """ INSERT INTO bingo_active_players_archive SELECT * FROM bingo_active_players; """
+                                await cur.execute(sql,)
+                                await conn.commit()
+                                sql = """ INSERT INTO bingo_active_blocks_archive SELECT * FROM bingo_active_blocks; """
+                                await cur.execute(sql,)
+                                await conn.commit()
+                                sql = """ TRUNCATE TABLE bingo_active_players; """
+                                await cur.execute(sql,)
+                                await conn.commit()
+                                sql = """ TRUNCATE TABLE bingo_active_blocks; """
+                                await cur.execute(sql,)
+                                await conn.commit()
                     except Exception as e:
                         traceback.print_exc(file=sys.stdout)
 
@@ -1577,28 +1541,16 @@ def boardDump(bingoList, width):
     return Output
 
 
-def gettopblock():
-    global connBlockchain
+async def gettopblock():
+    global pool_chain
     try:
-        openConnectionBlockchain()
-        with connBlockchain.cursor() as curBlockchain:
-            sql = """ SELECT `height`, `hash` FROM blocks ORDER BY height DESC LIMIT 1 """
-            curBlockchain.execute(sql,)
-            row = curBlockchain.fetchone()
-            return row
-    except Exception as e:
-        traceback.print_exc(file=sys.stdout)
-
-
-def getblock(blockH):
-    global connBlockchain
-    try:
-        openConnectionBlockchain()
-        with connBlockchain.cursor() as curBlockchain:
-            sql = """ SELECT `height`, `hash` FROM blocks WHERE `height = %s LMIT 1 """
-            curBlockchain.execute(sql, (blockH))
-            row = curBlockchain.fetchone()
-            return row
+        await openConnectionBlockchain()
+        async with pool_chain.acquire() as connBlockchain:
+            async with connBlockchain.cursor() as curBlockchain:
+                sql = """ SELECT `height`, `hash` FROM blocks ORDER BY height DESC LIMIT 1 """
+                await curBlockchain.execute(sql,)
+                row = await curBlockchain.fetchone()
+                return row
     except Exception as e:
         traceback.print_exc(file=sys.stdout)
 
@@ -1619,9 +1571,9 @@ def sumOfDigits(sentence):
 
 
 async def show_msgCard():
-    global channelID, conn
+    global channelID, pool
     botChan = bot.get_channel(id=int(channelID))
-    GameStart = Bingo_LastGame()
+    GameStart = await Bingo_LastGame()
     SomeTips = ['You can use `.board` only during game OPENED and ONGOING (if you register one).', 'To register during game opening, use `.board`', 'Please also check pinned messages for updates.', 'I am giving reward through TipBot. Tip me some Wrkz for every winner :)'] # new list
 
     # Add some remind list who is online but not play
@@ -1636,28 +1588,28 @@ async def show_msgCard():
         SomeTips.append('It takes balls to yell bingo.')
         SomeTips.append('A simple `.board` can have you in bingo :) ')
         # reminderListIds = [] ## List reminder
-        ListActivePlayer = List_bingo_active_players(GameStart[0])
+        ListActivePlayer = await List_bingo_active_players(GameStart[0])
         playerIDs = [] # list ID
         for player in ListActivePlayer:
             playerIDs.append(int(player[0]))
         try:
-            openConnection()
-            with conn.cursor() as cur:
-                sql = """ SELECT `discord_id`, `discord_name` FROM `bingo_reminder` """
-                cur.execute(sql,)
-                result = cur.fetchall()
-                if result:
-                    for row in result:
-                        # If they are online
-                        # reminderListIds.append(int(row[0]))
-                        # Check if user in the guild
-                        try:
-                            member = bot.get_user(int(row[0]))
-                            if member and int(row[0]) not in playerIDs:
-                                SomeTips.append('Do you want to play bingo? <@'+str(row[0])+'>. It is not late yet.  `.bingo remind` If you want me to stop this ping.')
-                        except Exception as e:
-                            traceback.print_exc(file=sys.stdout)
-                            
+            await openConnection()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT `discord_id`, `discord_name` FROM `bingo_reminder` """
+                    await cur.execute(sql,)
+                    result = await cur.fetchall()
+                    if result:
+                        for row in result:
+                            # If they are online
+                            # reminderListIds.append(int(row[0]))
+                            # Check if user in the guild
+                            try:
+                                member = bot.get_user(int(row[0]))
+                                if member and int(row[0]) not in playerIDs:
+                                    SomeTips.append('Do you want to play bingo? <@'+str(row[0])+'>. It is not late yet.  `.bingo remind` If you want me to stop this ping.')
+                            except Exception as e:
+                                traceback.print_exc(file=sys.stdout)
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
     elif GameStart[2].upper() == 'COMPLETED':
@@ -1694,7 +1646,7 @@ async def show_msgCard():
             if random.randint(0, 9)<= 4:
                 await botChan.send(f'{randMessageTo}.')
             else:
-                cards = Bingo_ShowCards(3, GameStart[0])
+                cards = await Bingo_ShowCards(3, GameStart[0])
                 if cards:
                     cardMsg = ''
                     for i in range(len(cards)):
@@ -1707,13 +1659,13 @@ async def show_msgCard():
 
 
 async def show_checkOpenedGame():
-    global channelID, remindedStart, remindedBlock
+    global channelID, remindedStart, remindedBlock, pool
     botChan = bot.get_channel(int(channelID))
-    GameStart = Bingo_LastGame()
+    GameStart = await Bingo_LastGame()
     # Insert only if game is start
     if GameStart:
-        ListActivePlayer = List_bingo_active_players(GameStart[0])
-        topBlock = gettopblock()
+        ListActivePlayer = await List_bingo_active_players(GameStart[0])
+        topBlock = await gettopblock()
         if GameStart[2].upper() == 'OPENED':
             if int(GameStart[1]) <= int(topBlock['height']):
                 # Mentioning people that game start.
@@ -1722,7 +1674,7 @@ async def show_checkOpenedGame():
                 for (i, item) in enumerate(ListActivePlayer):
                     ListMention = ListMention + '<@'+str(item[0])+'>'+' '
                 if len(ListActivePlayer)>= MIN_PLAYER:
-                    Bingo_ChangeStatusGame(GameStart[0], "ONGOING")
+                    await Bingo_ChangeStatusGame(GameStart[0], "ONGOING")
                     await botChan.send(f'{ListMention}\nGame started. `.board` registration is closed. Good luck!')
                     return
                 else:
@@ -1730,7 +1682,7 @@ async def show_checkOpenedGame():
                     try:
                         await botChan.send(f'{ListMention}\nGame extends {BLOCK_MIN_PLAYER} blocks for new players.\n'
                                            f'Reward increased by: {INCREASE_REWARD}WRKZ and played reward by: {INCREASE_PLAYREWARD}WRKZ.')
-                        Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
+                        await Bingo_Extend(int(GameStart[0]), int(topBlock['height']))
                     except Exception as e:
                         traceback.print_exc(file=sys.stdout)
             else:
@@ -1751,30 +1703,32 @@ async def show_checkOpenedGame():
                     winner_name = item[1]
                 try:
                     current_Date = datetime.now()
-                    topBlock = gettopblock()
-                    openConnection()
-                    with conn.cursor() as cur:
-                        sql = """ UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, 
-                                  `claim_Atheight`=%s WHERE `id`=%s """
-                        cur.execute(sql, ('COMPLETED', str(current_Date), str(winner_id), str(winner_name), str(topBlock['height']), str(GameStart[0])))
-                        conn.commit()
+                    topBlock = await gettopblock()
+                    await openConnection()
+                    async with pool.acquire() as conn:
+                        async with conn.cursor() as cur:
+                            sql = """ UPDATE bingo_gamelist SET `status`=%s, `completed_when`=%s, `winner_id`=%s, `winner_name`=%s, 
+                                      `claim_Atheight`=%s WHERE `id`=%s """
+                            await cur.execute(sql, ('COMPLETED', str(current_Date), str(winner_id), str(winner_name), str(topBlock['height']), str(GameStart[0])))
+                            await conn.commit()
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
                 try:
-                    openConnection()
-                    with conn.cursor() as cur:
-                        sql = """ INSERT INTO bingo_active_players_archive SELECT * FROM bingo_active_players; """
-                        cur.execute(sql,)
-                        conn.commit()
-                        sql = """ INSERT INTO bingo_active_blocks_archive SELECT * FROM bingo_active_blocks; """
-                        cur.execute(sql,)
-                        conn.commit()
-                        sql = """ TRUNCATE TABLE bingo_active_players; """
-                        cur.execute(sql,)
-                        conn.commit()
-                        sql = """ TRUNCATE TABLE bingo_active_blocks; """
-                        cur.execute(sql,)
-                        conn.commit()
+                    await openConnection()
+                    async with pool.acquire() as conn:
+                        async with conn.cursor() as cur:
+                            sql = """ INSERT INTO bingo_active_players_archive SELECT * FROM bingo_active_players; """
+                            await cur.execute(sql,)
+                            await conn.commit()
+                            sql = """ INSERT INTO bingo_active_blocks_archive SELECT * FROM bingo_active_blocks; """
+                            await cur.execute(sql,)
+                            await conn.commit()
+                            sql = """ TRUNCATE TABLE bingo_active_players; """
+                            await cur.execute(sql,)
+                            await conn.commit()
+                            sql = """ TRUNCATE TABLE bingo_active_blocks; """
+                            await cur.execute(sql,)
+                            await conn.commit()
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
                 winMsg = '<@'+str(winner_id)+'> wins the game alone.'
